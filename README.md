@@ -1,8 +1,8 @@
 # Mario - First Person
 
-An original implementation of a first-person 3D browser platformer. No existing game source or assets from the parent workspace were used.
+A first-person 3D browser platformer with procedural geometry and sounds, keyboard and touch controls, and a standalone HTML build.
 
-[Play the hosted game](https://mario-first-person-adventure.nolongerhuman4156.chatgpt.site)
+[Play Mario in your browser](https://mario-first-person.vercel.app/)
 
 ## Layout
 
@@ -32,10 +32,10 @@ Open `public/mario.html` directly in a modern browser. It contains the game, Thr
 
 ## Vercel
 
-`npm run build:vercel` builds the same standalone game into `vercel-dist/index.html`. The checked-in `vercel.json` configures installation, build, and output, so importing this repository into Vercel needs no environment variables. Both `/` and `/mario.html` serve the game. The original Sites build and hosted link remain available.
+`npm run build:vercel` builds the same standalone game into `vercel-dist/index.html`. The checked-in `vercel.json` configures installation, build, and output, so importing this repository into Vercel needs no environment variables. Both `/` and `/mario.html` serve the game. The original Sites build and [hosted version](https://mario-first-person-adventure.nolongerhuman4156.chatgpt.site) remain available.
 
 All world geometry and game sounds are created procedurally. The source is in `app/game/`; the HTML exporter is in `scripts/`.
 
 ## Validation
 
-Physics and game-state tests cover collisions, jump reach, coin/block collection, stomping, damage, checkpoint respawn, time-out, course completion, and restart. Browser interaction testing has not been performed. Optional WebMCP actions are feature-detected; they have not been verified in a browser with a supported WebMCP context.
+All 10 physics and game-state tests pass, covering collisions, jump reach, coin/block collection, stomping, damage, checkpoint respawn, time-out, course completion, and restart. TypeScript checking and the Vercel production build pass. The public game was checked in Chrome on 7 September 2026 for starting, movement, jump input, pause, resume, and restart, plus mobile layout and touch controls. Optional WebMCP actions are feature-detected; they have not been verified in a browser with a supported WebMCP context.
