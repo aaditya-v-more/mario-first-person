@@ -1,0 +1,2 @@
+# The standalone build embeds generated JavaScript and Three.js shader strings.
+public/mario.html linguist-generated=true -whitespace
