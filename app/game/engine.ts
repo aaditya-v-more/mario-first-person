@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { makeWorld, type World } from './world';
 import { newPlayer, stepPlayer, JUMP_SPEED, HEIGHT, type Box } from './physics';
 import { GameAudio } from './audio';
+import type { RtxGraphics } from './rtx';
 export type GameState='ready'|'playing'|'paused'|'won'|'over';
 export type Snapshot={status:GameState;coins:number;total:number;lives:number;time:number;score:number;progress:number;notice:string};
 type Particle={mesh:THREE.Mesh;velocity:THREE.Vector3;life:number};
@@ -11,6 +12,9 @@ export class GameEngine {
   camera=new THREE.PerspectiveCamera(68,1,.05,260);
   world:World;
   sun:THREE.DirectionalLight;
+  hemisphere:THREE.HemisphereLight;
+  rtx:RtxGraphics|null=null;
+  private graphicsRequest=0;
   player=newPlayer();
   audio=new GameAudio();
   state:Snapshot={status:'ready',coins:0,total:32,lives:3,time:180,score:0,progress:0,notice:''};
@@ -30,7 +34,7 @@ export class GameEngine {
     this.renderer.domElement.setAttribute('aria-label','Game view. Use WASD to move, mouse or arrow keys to look, and Space to jump.');
     container.appendChild(this.renderer.domElement);
     this.scene.background=new THREE.Color('#91d8ed');this.scene.fog=new THREE.Fog('#b6e4e7',55,185);
-    this.scene.add(new THREE.HemisphereLight('#e8faff','#658342',2.7));
+    this.hemisphere=new THREE.HemisphereLight('#e8faff','#658342',2.7);this.scene.add(this.hemisphere);
     this.sun=new THREE.DirectionalLight('#fff2cc',3.1);this.sun.position.set(-20,35,18);this.sun.castShadow=true;
     this.sun.shadow.mapSize.set(2048,2048);Object.assign(this.sun.shadow.camera,{left:-28,right:28,top:32,bottom:-32,far:110});this.sun.shadow.normalBias=.035;
     this.scene.add(this.sun,this.sun.target);
@@ -51,7 +55,25 @@ export class GameEngine {
     window.addEventListener('resize',this.resize);document.addEventListener('keydown',this.keyDown);document.addEventListener('keyup',this.keyUp);document.addEventListener('mousemove',this.mouseMove);document.addEventListener('pointerlockchange',this.lockChange);window.addEventListener('blur',this.onBlur);document.addEventListener('visibilitychange',this.onVisibility);
     const c=this.renderer.domElement;c.addEventListener('pointerdown',this.pointerDown);c.addEventListener('pointermove',this.pointerMove);c.addEventListener('pointerup',this.pointerUp);c.addEventListener('pointercancel',this.pointerUp);c.addEventListener('webglcontextlost',this.contextLost);
   }
-  resize=()=>{const w=this.container.clientWidth,h=this.container.clientHeight;this.renderer.setSize(w,h);this.camera.aspect=w/h;this.camera.updateProjectionMatrix();};
+  resize=()=>{const w=Math.max(1,this.container.clientWidth),h=Math.max(1,this.container.clientHeight);this.renderer.setSize(w,h);this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.rtx?.resize(w,h);};
+  async setRtx(enabled:boolean):Promise<boolean>{
+    const request=++this.graphicsRequest;
+    if(!enabled){this.rtx?.dispose();this.rtx=null;return false;}
+    if(this.rtx)return true;
+    try{
+      const {RtxGraphics}=await import('./rtx');
+      if(!this.running||request!==this.graphicsRequest)return false;
+      const graphics=new RtxGraphics(this.renderer,this.scene,this.camera,this.sun,this.hemisphere);
+      graphics.enable(this.container.clientWidth,this.container.clientHeight);
+      this.rtx=graphics;
+      // Shader setup time must not advance the gameplay clock or physics.
+      this.lastFrame=performance.now();
+      return true;
+    }catch{
+      if(this.running&&request===this.graphicsRequest)this.notify('RTX is unavailable on this device. Classic graphics are still on.',5);
+      return false;
+    }
+  }
   emit(){this.state.time=Math.ceil(this.remaining);this.state.progress=THREE.MathUtils.clamp((13-this.player.z)/135,0,1);this.onChange({...this.state});}
   notify(text:string,duration=2.5){this.state.notice=text;this.noticeTimer=duration;this.emit();}
   start(requestLock=true){
@@ -176,10 +198,11 @@ export class GameEngine {
       this.sun.position.set(this.player.x-20,35,this.player.z+18);this.sun.target.position.set(this.player.x,0,this.player.z-5);
     }
     this.emitTime+=dt;if(playing&&this.emitTime>.15){this.emitTime=0;this.emit();}
-    this.renderer.render(this.scene,this.camera);
+    if(this.rtx)this.rtx.render();else this.renderer.render(this.scene,this.camera);
   };
   destroy(){
     this.running=false;cancelAnimationFrame(this.raf);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();
+    this.graphicsRequest++;this.rtx?.dispose();this.rtx=null;
     window.removeEventListener('resize',this.resize);document.removeEventListener('keydown',this.keyDown);document.removeEventListener('keyup',this.keyUp);document.removeEventListener('mousemove',this.mouseMove);document.removeEventListener('pointerlockchange',this.lockChange);window.removeEventListener('blur',this.onBlur);document.removeEventListener('visibilitychange',this.onVisibility);
     const c=this.renderer.domElement;c.removeEventListener('pointerdown',this.pointerDown);c.removeEventListener('pointermove',this.pointerMove);c.removeEventListener('pointerup',this.pointerUp);c.removeEventListener('pointercancel',this.pointerUp);c.removeEventListener('webglcontextlost',this.contextLost);
     this.audio.destroy();this.clearParticles();

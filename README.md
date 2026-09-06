@@ -24,11 +24,16 @@ Open `public/mario.html` directly in a modern browser. It contains the game, Thr
 - WASD: move. Mouse: look. Space: jump. Shift: sprint.
 - Escape or P: pause. Arrow keys: forward/back and turning if pointer lock is unavailable. Dragging also controls the camera.
 - On touch devices, use the left joystick, drag the world to look, and tap Jump.
+- The **RTX** switch in the top toolbar enables enhanced lighting, environment reflections, contact shadows, bloom, and antialiasing. It starts **off** on every page load; turning it off restores the original graphics. Pause with Escape to change it while using mouse look. Switching preserves the current course, position, coins, timer, and audio settings.
 - Collect coins, hit question blocks from below, stomp Goombas, and reach the flag. There are three lives, a checkpoint, and a three-minute timer.
+
+RTX is the name of an optional Three.js graphics preset, not NVIDIA hardware ray tracing. It uses [GTAO](https://threejs.org/docs/pages/GTAOPass.html), [bloom](https://threejs.org/docs/pages/UnrealBloomPass.html), and a locally generated HDR sky. Reflections use a snapshot of the surrounding course captured when the mode is enabled. It needs floating-point render targets and costs more GPU time than classic mode; unsupported devices keep classic graphics. Effects load only when enabled, release their GPU resources when disabled, and cap rendering at two million pixels with half-resolution ambient occlusion. The standalone HTML still works offline.
+
+The preset uses WebGL 2 on Apple Silicon Macs (including M5) and Windows laptops with NVIDIA, AMD, or Intel GPUs. There is no NVIDIA-only API or WebGPU requirement. Support is checked using the browser's floating-point framebuffer and shader compilation; if either fails, the toggle stays off and the existing game remains playable. Use a current browser with hardware acceleration enabled.
 
 ## Development
 
-`npm ci` then `npm run dev`. `npm test` runs deterministic physics and game-state tests. `npx tsc --noEmit` checks types. `npm run build` exports the standalone HTML and builds the hosted game. `npm run export:html` only refreshes the HTML.
+`npm ci` then `npm run dev`. `npm test` runs deterministic physics, game-state, and graphics-state tests. `npx tsc --noEmit` checks types. `npm run build` exports the standalone HTML and builds the hosted game. `npm run export:html` only refreshes the HTML. For graphics integration tests, install browsers with `npx playwright install chromium webkit`, then run `npm run test:graphics`.
 
 ## Vercel
 
@@ -38,4 +43,4 @@ All world geometry and game sounds are created procedurally. The source is in `a
 
 ## Validation
 
-All 10 physics and game-state tests pass, covering collisions, jump reach, coin/block collection, stomping, damage, checkpoint respawn, time-out, course completion, and restart. TypeScript checking and the Vercel production build pass. The public game was checked in Chrome on 7 September 2026 for starting, movement, jump input, pause, resume, and restart, plus mobile layout and touch controls. Optional WebMCP actions are feature-detected; they have not been verified in a browser with a supported WebMCP context.
+The 15 unit tests cover gameplay plus graphics restoration, resource disposal, cancellation, unsupported-device fallback, and the resolution budget. Graphics integration tests run the standalone HTML in Chromium and WebKit, covering toggling, restoring the original rendered pixels, preserving progress, keyboard access, resizing, restarting, and GPU texture cleanup. Both browser suites passed on an Apple M5 with hardware rendering. Windows/NVIDIA hardware has not been directly tested; it uses the same capability-checked WebGL 2 renderer. Optional WebMCP actions are feature-detected; they have not been verified in a browser with a supported WebMCP context.

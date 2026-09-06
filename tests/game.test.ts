@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import {newPlayer,stepPlayer,JUMP_SPEED,HEIGHT,type Box} from '../app/game/physics';
 import {GameEngine} from '../app/game/engine';
 import {makeWorld} from '../app/game/world';
+import {enhanceMaterials,graphicsPixelRatio} from '../app/game/graphics';
 const ground:Box={x:0,y:-1,z:0,w:30,h:2,d:30};
 const step=(p:ReturnType<typeof newPlayer>,boxes:Box[],seconds:number)=>{for(let t=0;t<seconds;t+=1/120)stepPlayer(p,boxes,1/120);};
 test('standing player stays grounded and lands after a full jump',()=>{
@@ -61,4 +62,62 @@ test('jump height is sufficient to land on floating blocks and the tallest pipe'
     for(let i=0;i<100;i++){stepPlayer(p,[ground,platform],1/120);if(p.grounded&&p.y===height){landed=true;break;}}
     assert.ok(landed,`Could not reach a ${height}-unit platform`);
   }
+});
+
+test('RTX material changes restore exactly without undoing collected coins or used blocks',()=>{
+  const g=game();
+  const serialize=(m:THREE.MeshStandardMaterial)=>JSON.stringify({color:m.color,roughness:m.roughness,metalness:m.metalness,envMapIntensity:m.envMapIntensity,emissive:m.emissive,emissiveIntensity:m.emissiveIntensity,map:m.map?.uuid});
+  const materials=new Map<THREE.MeshStandardMaterial,string>();
+  g.scene.traverse(o=>{if(o instanceof THREE.Mesh)for(const m of Array.isArray(o.material)?o.material:[o.material])if(m instanceof THREE.MeshStandardMaterial)materials.set(m,serialize(m));});
+  const restore=enhanceMaterials(g.scene);
+  const gold=[...materials.keys()].find(m=>m.color.getHexString()==='ffca2d')!;
+  assert.equal(gold.metalness,.82);
+  const c=g.world.coins[0];g.player.x=c.x;g.player.z=c.z;g.simulate(1/120);
+  g.bump(g.world.boxes.find(b=>b.kind==='question')!);
+  const position={...g.player},state={...g.state};
+  restore();
+  for(const [m,original] of materials)assert.equal(serialize(m),original);
+  assert.deepEqual(g.player,position);assert.deepEqual(g.state,state);
+  assert.equal(c.taken,true);assert.equal(c.mesh.visible,false);
+  assert.equal(g.world.questions[0].mesh.material,g.spentBlockMaterial);
+  // A second enable/disable cycle must not accumulate material changes.
+  enhanceMaterials(g.scene)();
+  for(const [m,original] of materials)assert.equal(serialize(m),original);
+});
+
+test('RTX resolution respects device density and the two-million-pixel budget',()=>{
+  for(const [w,h,dpr] of [[390,844,3],[1920,1080,2],[3840,2160,2],[1280,720,1]]){
+    const ratio=graphicsPixelRatio(w,h,dpr);
+    assert.ok(ratio<=dpr&&ratio<=1.5);
+    assert.ok(w*h*ratio**2<=2_000_001);
+  }
+  assert.equal(graphicsPixelRatio(1280,720,1),1);
+});
+
+test('turning RTX off disposes effects without resetting a paused course',async()=>{
+  const g=game();let disposed=0;
+  Object.assign(g,{graphicsRequest:0,rtx:{dispose(){disposed++;}}});
+  g.state.status='paused';g.state.coins=7;g.state.lives=2;g.remaining=93;g.player.z=-65;g.checkpoint=true;
+  const state={...g.state},player={...g.player};
+  assert.equal(await g.setRtx(false),false);assert.equal(disposed,1);assert.equal(g.rtx,null);
+  assert.deepEqual(g.state,state);assert.deepEqual(g.player,player);assert.equal(g.remaining,93);assert.equal(g.checkpoint,true);
+});
+
+test('a cancelled or destroyed RTX request never initializes the graphics pipeline',async()=>{
+  const g=game();Object.assign(g,{graphicsRequest:0,rtx:null,running:true});
+  const pending=g.setRtx(true);await g.setRtx(false);
+  assert.equal(await pending,false);assert.equal(g.rtx,null);assert.equal(g.state.notice,'');
+  const destroyed=g.setRtx(true);g.running=false;
+  assert.equal(await destroyed,false);assert.equal(g.rtx,null);assert.equal(g.state.notice,'');
+});
+
+test('unsupported enhanced graphics retain the original scene and playable course',async()=>{
+  const g=game();Object.assign(g,{graphicsRequest:0,rtx:null,running:true});
+  Object.assign(g.renderer,{extensions:{has:()=>false}});
+  const player={...g.player},background=g.scene.background,materials=g.world.questions.map(q=>q.mesh.material);
+  assert.equal(await g.setRtx(true),false);assert.equal(g.rtx,null);
+  assert.deepEqual(g.player,player);assert.equal(g.state.status,'playing');
+  assert.equal(g.scene.background,background);
+  assert.deepEqual(g.world.questions.map(q=>q.mesh.material),materials);
+  assert.match(g.state.notice,/Classic graphics are still on/);
 });

@@ -3,15 +3,23 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUpRight, ArrowRight, Volume2, VolumeX, Maximize, Pause, RotateCcw, Flag, Mouse, MoveUp, Heart, Trophy, Play } from 'lucide-react';
 import type { GameEngine, Snapshot } from './engine';
 import { Progress } from '@/components/ui/progress';
+import { Switch } from '@/components/ui/switch';
 import { registerGameTools } from './webmcp';
 const initial:Snapshot={status:'ready',coins:0,total:32,lives:3,time:180,score:0,progress:0,notice:''};
 export default function Game(){
   const scene=useRef<HTMLDivElement>(null),engine=useRef<GameEngine|null>(null);
   const [state,setState]=useState(initial),[loaded,setLoaded]=useState(false),[error,setError]=useState(''),[muted,setMuted]=useState(false);
+  const [rtx,setRtx]=useState(false),[graphicsBusy,setGraphicsBusy]=useState(false),[graphicsError,setGraphicsError]=useState('');
   useEffect(()=>{let dead=false;import('./engine').then(({GameEngine})=>{if(dead||!scene.current)return;try{engine.current=new GameEngine(scene.current,setState);setLoaded(true);}catch{setError('This game needs WebGL. Enable hardware acceleration in your browser, then reload.');}}).catch(()=>setError('The game could not load. Reload the page to try again.'));return()=>{dead=true;engine.current?.destroy();};},[]);
   useEffect(()=>{if(!loaded||!engine.current)return;return registerGameTools(engine.current);},[loaded]);
   const start=()=>engine.current?.start();
   const toggleSound=()=>{setMuted(!muted);engine.current?.setMuted(!muted);};
+  const toggleRtx=async(enabled:boolean)=>{
+    const game=engine.current;if(!game||graphicsBusy)return;
+    setGraphicsBusy(true);setGraphicsError('');
+    try{const active=await game.setRtx(enabled);if(engine.current===game){setRtx(active);if(enabled&&!active)setGraphicsError('RTX is unavailable on this device. Classic graphics are still on.');}}
+    finally{setGraphicsBusy(false);}
+  };
   const fullscreen=()=>{if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});else document.documentElement.requestFullscreen?.().catch(()=>{});};
   const ready=state.status==='ready',playing=state.status==='playing';
   return <main className={`game-shell ${playing?'is-playing':''}`}>
@@ -20,8 +28,10 @@ export default function Game(){
     <header className="topbar">
       <button className="brand" onClick={()=>window.location.reload()} aria-label="Mario First Person home"><span className="brand-mark">M</span><span>MARIO<span className="brand-slash">/</span><span className="brand-sub">FIRST PERSON</span></span></button>
       <div className="world-label"><span className="status-dot"/> WORLD 1–1 <span className="label-divider"/> MUSHROOM KINGDOM</div>
-      <div className="toolbar"><button className="icon-button" onClick={toggleSound} aria-label={muted?'Turn sound on':'Mute sound'} title={muted?'Sound off':'Sound on'}>{muted?<VolumeX size={19}/>:<Volume2 size={19}/>}</button><button className="icon-button fullscreen-button" onClick={fullscreen} aria-label="Toggle fullscreen" title="Fullscreen"><Maximize size={18}/></button>{playing&&<button className="icon-button" onClick={()=>engine.current?.pause()} aria-label="Pause game"><Pause size={18}/></button>}</div>
+      <div className="toolbar"><label className={`graphics-control ${rtx?'graphics-on':''}`} title="Enhanced lighting, reflections and glow. More demanding on your device."><span>RTX <small aria-hidden="true">{graphicsBusy?'…':rtx?'ON':'OFF'}</small></span><Switch className="graphics-switch" checked={rtx} onCheckedChange={toggleRtx} disabled={!loaded||!!error||graphicsBusy} aria-label="RTX enhanced graphics" aria-describedby="graphics-description" aria-busy={graphicsBusy} onKeyDown={e=>{if(e.code==='Space'||e.code==='Enter')e.stopPropagation();}}/></label><button className="icon-button" onClick={toggleSound} aria-label={muted?'Turn sound on':'Mute sound'} title={muted?'Sound off':'Sound on'}>{muted?<VolumeX size={19}/>:<Volume2 size={19}/>}</button><button className="icon-button fullscreen-button" onClick={fullscreen} aria-label="Toggle fullscreen" title="Fullscreen"><Maximize size={18}/></button>{playing&&<button className="icon-button" onClick={()=>engine.current?.pause()} aria-label="Pause game"><Pause size={18}/></button>}</div>
     </header>
+    <span id="graphics-description" className="graphics-description">Enhanced lighting, reflections and glow; not hardware ray tracing. Off by default. Pause to change graphics while using mouse look.</span>
+    {graphicsError&&<div className="graphics-error" role="status">{graphicsError}</div>}
     {ready&&<>
       <div className="level-stamp"><span>01</span><div>THE OVERWORLD<small>A familiar world. A whole new view.</small></div></div>
       <section className="intro">
