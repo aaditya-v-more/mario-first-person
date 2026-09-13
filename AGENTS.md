@@ -16,4 +16,4 @@
   a new standalone export. Keep dependencies and the lockfile unchanged unless
   the change requires them. Do not include unrelated work in a source commit.
 
-- Keep sun/moon controls in start and pause/end menus. Follow device appearance until a manual choice is made; share the parent-domain appearance cookie on aadityamore.com and its subdomains. The bundled `public/appearance.js` is synchronized with the portfolio runtime. Theme interface panels and controls without changing rendered scenery, gameplay colors, progress or fullscreen state.
+- Keep this game’s original palette. Synchronization refers only to creator/source navigation links, and adding or updating those links across projects requires explicit user permission. It does not authorize adding themes, using device appearance, or synchronizing appearance across sites. Preserve the existing authorized creator links.
