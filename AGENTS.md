@@ -19,3 +19,5 @@ This is an independently maintained project. Any modification to this project or
   the change requires them. Do not include unrelated work in a source commit.
 
 - Keep this game’s original palette. Synchronization refers only to creator/source navigation links, and adding or updating those links across projects requires explicit user permission. It does not authorize adding themes, using device appearance, or synchronizing appearance across sites. Preserve the existing authorized creator links.
+
+- The Vercel project `mario-first-person` publishes successful `main` pushes using `vercel.json`. Keep `https://play.aadityamore.com/mario/` canonical in both the app layout and standalone export, retain the absolute Back to Play menu link, and include `THIRD_PARTY_LICENSES.txt` in each export. Asset URLs must work at the standalone root and through the Play subpath. Verify the exact pushed commit reaches production instead of manually redeploying it.

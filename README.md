@@ -61,3 +61,5 @@ Creator links stay inside the start, pause and end menus.
 Run `npm test`, `npm run test:fullscreen`, `npm run test:mobile` and
 `npm run test:graphics` to check gameplay, fullscreen behavior, phone layouts and
 graphics. Build the standalone Vercel export with `npm run build:vercel`.
+
+The Git-linked Vercel project `mario-first-person` publishes successful pushes to `main`. The canonical game address is `https://play.aadityamore.com/mario/`; Play forwards that path to the live independent deployment. The source owns the canonical metadata, menu-only Back to Play link and `THIRD_PARTY_LICENSES.txt`. Keep asset URLs relative so both the standalone root and forwarded Play path work. Verify the pushed commit reaches production; no additional manual game deployment or portfolio copy is needed.

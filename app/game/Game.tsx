@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { registerGameTools } from './webmcp';
 import { FullscreenSession, type FullscreenState } from './fullscreen';
-function CreatorLinks(){return <nav className="creator-links" data-creator-links aria-label="Created by Aaditya More"><span>By Aaditya More</span><div><a href="https://aadityamore.com/">Website</a><a href="https://github.com/aaditya-v-more">GitHub</a><a href="https://www.linkedin.com/in/aadityavmore/">LinkedIn</a></div></nav>;}
+function CreatorLinks(){return <nav className="creator-links" data-creator-links aria-label="Created by Aaditya More"><span>By Aaditya More</span><div><a href="https://aadityamore.com/">Website</a><a href="https://github.com/aaditya-v-more">GitHub</a><a href="https://www.linkedin.com/in/aadityavmore/">LinkedIn</a></div><a href="https://play.aadityamore.com/" data-collection-return style={{minHeight:44,padding:"6px 0"}}>← Back to Play</a></nav>;}
 const initial:Snapshot={status:'ready',coins:0,total:32,lives:3,time:180,score:0,progress:0,notice:''};
 export default function Game(){
   const scene=useRef<HTMLDivElement>(null),engine=useRef<GameEngine|null>(null),shell=useRef<HTMLElement>(null),display=useRef<FullscreenSession|null>(null),touchPointer=useRef<number|null>(null);
