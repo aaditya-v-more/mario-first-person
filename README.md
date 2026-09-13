@@ -44,3 +44,20 @@ All world geometry and game sounds are created procedurally. The source is in `a
 ## Validation
 
 The 15 unit tests cover gameplay plus graphics restoration, resource disposal, cancellation, unsupported-device fallback, and the resolution budget. Graphics integration tests run the standalone HTML in Chromium and WebKit, covering toggling, restoring the original rendered pixels, preserving progress, keyboard access, resizing, restarting, and GPU texture cleanup. Both browser suites passed on an Apple M5 with hardware rendering. Windows/NVIDIA hardware has not been directly tested; it uses the same capability-checked WebGL 2 renderer. Optional WebMCP actions are feature-detected; they have not been verified in a browser with a supported WebMCP context.
+
+
+## Phone controls and fullscreen
+
+The game fits portrait, landscape and short screens, including safe-area insets.
+Start and pause menus scroll when needed; the left joystick moves, dragging the
+world looks around, and the right button jumps. Cancelling a touch releases the
+joystick. Desktop keyboard/mouse controls and optional RTX remain available.
+
+Starting or resuming from a game button requests fullscreen when supported.
+If the browser declines, play continues in the tab. Leaving fullscreen disables
+automatic entry for this page session; use the toolbar button to enter again.
+Creator links stay inside the start, pause and end menus.
+
+Run `npm test`, `npm run test:fullscreen`, `npm run test:mobile` and
+`npm run test:graphics` to check gameplay, fullscreen behavior, phone layouts and
+graphics. Build the standalone Vercel export with `npm run build:vercel`.
