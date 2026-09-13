@@ -1,5 +1,7 @@
 # Game source guidance
 
+This is an independently maintained project. Any modification to this project or its deployment requires explicit user approval for the affected project and the specific change. A general request to maintain or synchronize the portfolio, Play hub or Learn hub does not authorize changes here, including links, content, layout, behavior, themes, documentation or hosting. Approval already given for a specific change remains valid; do not ask again for that same work. The requirements below guide authorized work and do not grant permission to make additional changes.
+
 - Preserve the phone portrait, landscape and short-screen layouts. Menus must
   remain scrollable, HUD and touch controls must fit the visible viewport, and
   controls must respect safe-area insets and support simultaneous move/look/jump.
