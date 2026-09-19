@@ -1,107 +1,758 @@
 import * as THREE from 'three';
 import type { Box } from './physics';
-export type Coin = { mesh: THREE.Group; x:number; y:number; z:number; taken:boolean };
-export type Enemy = { mesh:THREE.Group; x:number; y:number; z:number; home:number; range:number; direction:number; alive:boolean; stompTime:number };
-export type Question = { mesh:THREE.Mesh; used:boolean; baseY:number; bump:number; coin:THREE.Group; originalMaterial:THREE.Material };
-export type World = { boxes:Box[]; coins:Coin[]; enemies:Enemy[]; questions:Question[]; clouds:THREE.Group[]; flag:THREE.Mesh; flagGroup:THREE.Group; decorations:THREE.Group };
-const mat = (color:THREE.ColorRepresentation, roughness=.75) => new THREE.MeshStandardMaterial({color,roughness});
-export function makeWorld(scene:THREE.Scene):World {
-  const boxes:Box[]=[], coins:Coin[]=[], enemies:Enemy[]=[], questions:Question[]=[], clouds:THREE.Group[]=[];
-  const grass=mat('#69bf38'), edge=mat('#86d747'), green=mat('#159341',.35), rim=mat('#24bf55',.3), darkGreen=mat('#0a5735'), brown=mat('#a55730'), cream=mat('#fff7db'), gold=mat('#ffca2d',.28), white=mat('#fffdfa');
-  const decorations=new THREE.Group(); scene.add(decorations);
-  const cubeGeo=new THREE.BoxGeometry(1,1,1), sphereGeo=new THREE.SphereGeometry(1,16,12);
-  function cube(x:number,y:number,z:number,w:number,h:number,d:number,m:THREE.Material, parent:THREE.Object3D=scene,solid=false) {
-    const mesh=new THREE.Mesh(cubeGeo,m); mesh.position.set(x,y,z); mesh.scale.set(w,h,d); mesh.castShadow=true; mesh.receiveShadow=true; parent.add(mesh);
-    if(solid) boxes.push({x,y,z,w,h,d}); return mesh;
+import { createTextureCanvas } from './browser-runtime';
+import { LEVELS, PALETTES, type Level, type Power } from './levels';
+export type Coin = {
+  mesh: THREE.Group;
+  x: number;
+  y: number;
+  z: number;
+  taken: boolean;
+  star?: number;
+};
+export type Enemy = {
+  mesh: THREE.Group;
+  x: number;
+  y: number;
+  z: number;
+  home: number;
+  range: number;
+  direction: number;
+  alive: boolean;
+  stompTime: number;
+  kind: 'goomba' | 'koopa';
+  shell: boolean;
+  stun: number;
+};
+export type Question = {
+  mesh: THREE.Mesh;
+  used: boolean;
+  baseY: number;
+  bump: number;
+  coin: THREE.Group;
+  originalMaterial: THREE.Material;
+  reward: 'coin' | Power;
+  powerIndex: number;
+};
+export type Pickup = {
+  mesh: THREE.Group;
+  x: number;
+  y: number;
+  z: number;
+  kind: Power;
+  active: boolean;
+  taken: boolean;
+};
+export type MovingPlatform = {
+  mesh: THREE.Group;
+  box: Box;
+  axis: 'x' | 'y' | 'z';
+  origin: number;
+  distance: number;
+  speed: number;
+  phase: number;
+};
+export type Firebar = {
+  mesh: THREE.Group;
+  x: number;
+  y: number;
+  z: number;
+  length: number;
+  speed: number;
+  angle: number;
+};
+export type Boss = {
+  mesh: THREE.Group;
+  x: number;
+  y: number;
+  z: number;
+  home: number;
+  health: number;
+  cooldown: number;
+  hurt: number;
+  alive: boolean;
+};
+export type World = {
+  root: THREE.Group;
+  level: Level;
+  boxes: Box[];
+  coins: Coin[];
+  enemies: Enemy[];
+  questions: Question[];
+  pickups: Pickup[];
+  platforms: MovingPlatform[];
+  firebars: Firebar[];
+  boss?: Boss;
+  clouds: THREE.Group[];
+  flag: THREE.Mesh;
+  flagGroup: THREE.Group;
+  checkpoint: THREE.Group;
+  checkpoints: THREE.Group[];
+  decorations: THREE.Group;
+  gate?: THREE.Mesh;
+  gateBox?: Box;
+  dispose: () => void;
+};
+const mat = (color: THREE.ColorRepresentation, roughness = 0.75) =>
+  new THREE.MeshStandardMaterial({ color, roughness });
+
+export function makeWorld(
+  scene: THREE.Scene,
+  textureCanvas: () => HTMLCanvasElement = createTextureCanvas,
+  level: Level = LEVELS[0],
+): World {
+  const root = new THREE.Group();
+  scene.add(root);
+  const boxes: Box[] = [],
+    coins: Coin[] = [],
+    enemies: Enemy[] = [],
+    questions: Question[] = [],
+    pickups: Pickup[] = [],
+    platforms: MovingPlatform[] = [],
+    firebars: Firebar[] = [],
+    clouds: THREE.Group[] = [];
+  const palette = PALETTES[level.theme];
+  const grass = mat(palette.ground),
+    edge = mat(palette.edge),
+    green = mat('#159341', 0.35),
+    rim = mat('#24bf55', 0.3),
+    darkGreen = mat('#0a5735'),
+    brown = mat('#a55730'),
+    cream = mat('#fff7db'),
+    gold = mat('#ffca2d', 0.28),
+    white = mat('#fffdfa'),
+    dark = mat('#282b3b'),
+    red = mat('#ef4e42');
+  const decorations = new THREE.Group();
+  root.add(decorations);
+  const cubeGeo = new THREE.BoxGeometry(1, 1, 1),
+    sphereGeo = new THREE.SphereGeometry(1, 16, 12);
+  const allMaterials = new Set<THREE.Material>([
+    grass,
+    edge,
+    green,
+    rim,
+    darkGreen,
+    brown,
+    cream,
+    gold,
+    white,
+    dark,
+    red,
+  ]);
+  function cube(
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+    h: number,
+    d: number,
+    m: THREE.Material,
+    parent: THREE.Object3D = root,
+    solid = false,
+  ) {
+    allMaterials.add(m);
+    const mesh = new THREE.Mesh(cubeGeo, m);
+    mesh.position.set(x, y, z);
+    mesh.scale.set(w, h, d);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    parent.add(mesh);
+    if (solid) boxes.push({ x, y, z, w, h, d });
+    return mesh;
   }
-  function ball(x:number,y:number,z:number,sx:number,sy:number,sz:number,m:THREE.Material,parent:THREE.Object3D=scene) {
-    const mesh=new THREE.Mesh(sphereGeo,m); mesh.position.set(x,y,z); mesh.scale.set(sx,sy,sz); mesh.castShadow=true; mesh.receiveShadow=true; parent.add(mesh); return mesh;
+  function ball(
+    x: number,
+    y: number,
+    z: number,
+    sx: number,
+    sy: number,
+    sz: number,
+    m: THREE.Material,
+    parent: THREE.Object3D = root,
+  ) {
+    allMaterials.add(m);
+    const mesh = new THREE.Mesh(sphereGeo, m);
+    mesh.position.set(x, y, z);
+    mesh.scale.set(sx, sy, sz);
+    mesh.castShadow = true;
+    parent.add(mesh);
+    return mesh;
   }
-  const soilCanvas=document.createElement('canvas'); soilCanvas.width=128;soilCanvas.height=128;
-  const ctx=soilCanvas.getContext('2d')!; ctx.fillStyle='#ba7546';ctx.fillRect(0,0,128,128);
-  for(let j=0;j<4;j++)for(let i=0;i<4;i++){ctx.fillStyle=(i+j)%2?'#c98750':'#ab683c';ctx.fillRect(i*32+2,j*32+2,28,28);ctx.fillStyle='#d69a60';ctx.fillRect(i*32+3,j*32+3,25,3);}
-  const soilTexture=new THREE.CanvasTexture(soilCanvas);soilTexture.colorSpace=THREE.SRGBColorSpace;soilTexture.wrapS=soilTexture.wrapT=THREE.RepeatWrapping;soilTexture.repeat.set(10,2);
-  const soil=new THREE.MeshStandardMaterial({map:soilTexture,roughness:1});
-  function island(x:number,z:number,w:number,d:number) {
-    cube(x,-2.6,z,w,5,d,soil,scene,true);cube(x,-.13,z,w+.12,.26,d+.12,grass,scene,true);
-    cube(x,-.4,z,w+.16,.35,d+.16,edge);
-    // Mown grass tiles keep the terrain legible from the first-person camera.
-    const tiles:THREE.Matrix4[]=[];
-    for(let iz=0;iz<d/2;iz++)for(let ix=0;ix<w/2;ix++)if((ix+iz)%2===0)tiles.push(new THREE.Matrix4().compose(new THREE.Vector3(x-w/2+1+ix*2,.005,z-d/2+1+iz*2),new THREE.Quaternion(),new THREE.Vector3(1.97,.012,1.97)));
-    const lawn=new THREE.InstancedMesh(cubeGeo,mat('#71c43e'),tiles.length);tiles.forEach((m,i)=>lawn.setMatrixAt(i,m));lawn.receiveShadow=true;scene.add(lawn);
+  function texture(draw: (ctx: CanvasRenderingContext2D) => void) {
+    const c = textureCanvas();
+    c.width = c.height = 128;
+    draw(c.getContext('2d')!);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
   }
-  island(0,-9,26,56);island(2,-65,22,48);island(-1,-112,26,38);
-  function pipe(x:number,z:number,h:number) {
-    const body=new THREE.Mesh(new THREE.CylinderGeometry(1,1,h,32),green); body.position.set(x,h/2,z);body.castShadow=true;body.receiveShadow=true;scene.add(body);
-    const collar=new THREE.Mesh(new THREE.CylinderGeometry(1.2,1.2,.48,32),rim);collar.position.set(x,h-.08,z);collar.castShadow=true;scene.add(collar);
-    const hole=new THREE.Mesh(new THREE.CircleGeometry(.91,32),darkGreen);hole.rotation.x=-Math.PI/2;hole.position.set(x,h+.165,z);scene.add(hole);
-    const ring=new THREE.Mesh(new THREE.TorusGeometry(1.045,.15,8,32),rim);ring.rotation.x=Math.PI/2;ring.position.set(x,h+.16,z);scene.add(ring);
-    boxes.push({x,y:(h+.2)/2,z,w:2.25,h:h+.2,d:2.25,kind:'pipe'});
+  const soilTex = texture((c) => {
+    c.fillStyle = '#a6633e';
+    c.fillRect(0, 0, 128, 128);
+    for (let j = 0; j < 4; j++)
+      for (let i = 0; i < 4; i++) {
+        c.fillStyle = (i + j) % 2 ? '#bd8050' : '#9d5938';
+        c.fillRect(i * 32 + 2, j * 32 + 2, 28, 28);
+        c.fillStyle = '#ce9360';
+        c.fillRect(i * 32 + 3, j * 32 + 3, 25, 3);
+      }
+  });
+  soilTex.wrapS = soilTex.wrapT = THREE.RepeatWrapping;
+  soilTex.repeat.set(4, 1);
+  const soil = new THREE.MeshStandardMaterial({ map: soilTex, roughness: 1 });
+  const brickTex = texture((c) => {
+    c.fillStyle = '#633c32';
+    c.fillRect(0, 0, 128, 128);
+    for (let j = 0; j < 4; j++)
+      for (let i = -1; i < 3; i++) {
+        const x = i * 64 + (j % 2) * 32;
+        c.fillStyle = '#bb7042';
+        c.fillRect(x + 2, j * 32 + 2, 60, 28);
+        c.fillStyle = '#e6a46c';
+        c.fillRect(x + 3, j * 32 + 3, 58, 3);
+      }
+  });
+  const brick = new THREE.MeshStandardMaterial({ map: brickTex });
+  const qmat = new THREE.MeshStandardMaterial({
+    map: texture((c) => {
+      c.fillStyle = '#f6b92e';
+      c.fillRect(0, 0, 128, 128);
+      c.fillStyle = '#ffe379';
+      c.fillRect(5, 5, 118, 5);
+      c.fillRect(5, 5, 5, 118);
+      c.fillStyle = '#ce8312';
+      c.fillRect(5, 118, 118, 5);
+      c.fillRect(118, 5, 5, 118);
+      c.fillStyle = '#a5661a';
+      for (const x of [15, 106])
+        for (const y of [15, 106]) c.fillRect(x, y, 7, 7);
+      c.font = '900 91px Arial';
+      c.textAlign = 'center';
+      c.fillStyle = '#ac6b16';
+      c.fillText('?', 67, 103);
+      c.fillStyle = '#fff0a8';
+      c.fillText('?', 63, 99);
+    }),
+    roughness: 0.65,
+  });
+  const stone = mat(palette.ground),
+    wood = mat('#c88849'),
+    stripe = mat('#ffda63'),
+    cloud = mat('#f7f2ef');
+  [soil, brick, qmat, stone, wood, stripe, cloud].forEach((m) =>
+    allMaterials.add(m),
+  );
+  for (const surface of level.surfaces) {
+    const { x, y, z, w, h, d, style, moving } = surface;
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    root.add(g);
+    const material =
+      style === 'brick'
+        ? brick
+        : style === 'wood'
+          ? wood
+          : style === 'cloud'
+            ? cloud
+            : style === 'stone'
+              ? stone
+              : soil;
+    cube(0, -0.09, 0, w, h - 0.18, d, material, g);
+    cube(
+      0,
+      h / 2 - 0.09,
+      0,
+      w,
+      0.18,
+      d,
+      style === 'ground' ? grass : style === 'wood' ? stripe : edge,
+      g,
+    );
+    const box = { x, y, z, w, h, d, kind: moving ? 'moving' : 'terrain' };
+    boxes.push(box);
+    if (moving) {
+      platforms.push({
+        mesh: g,
+        box,
+        axis: moving.axis,
+        origin: box[moving.axis],
+        distance: moving.distance,
+        speed: moving.speed,
+        phase: moving.phase || 0,
+      });
+      for (let i = 0; i < 5; i++)
+        cube(
+          -w / 2 + 0.45 + (i * (w - 0.9)) / 4,
+          h / 2 + 0.008,
+          0,
+          0.14,
+          0.016,
+          d - 0.2,
+          dark,
+          g,
+        );
+    } else if (style === 'ground') {
+      const tiles: THREE.Matrix4[] = [];
+      for (let iz = 1; iz < d; iz += 2)
+        for (let ix = 1; ix < w; ix += 2)
+          if (((ix + iz) / 2) % 2 === 0)
+            tiles.push(
+              new THREE.Matrix4().compose(
+                new THREE.Vector3(-w / 2 + ix, h / 2 + 0.006, -d / 2 + iz),
+                new THREE.Quaternion(),
+                new THREE.Vector3(Math.min(1.97, w), 0.012, 1.97),
+              ),
+            );
+      const lawn = new THREE.InstancedMesh(cubeGeo, edge, tiles.length);
+      tiles.forEach((m, i) => lawn.setMatrixAt(i, m));
+      lawn.receiveShadow = true;
+      g.add(lawn);
+    }
+    if (style === 'cloud')
+      for (const side of [-1, 1])
+        for (let j = 0; j < Math.ceil(d / 3); j++)
+          ball(
+            side * (w / 2 - 0.4),
+            -0.5,
+            -d / 2 + 1.5 + j * 3,
+            1.1,
+            0.7,
+            1.6,
+            cloud,
+            g,
+          );
   }
-  pipe(-6,3,2.7);pipe(7,-13,3.2);pipe(-8,-26,2.2);pipe(8,-54,2.8);pipe(-5,-71,3.3);pipe(8,-104,2.4);
-  function makeCoin(x:number,y:number,z:number,tracked=true) {
-    const group=new THREE.Group();group.position.set(x,y,z);
-    const outer=new THREE.Mesh(new THREE.CylinderGeometry(.34,.34,.105,20),gold);outer.rotation.x=Math.PI/2;outer.castShadow=true;group.add(outer);
-    const inner=new THREE.Mesh(new THREE.TorusGeometry(.255,.024,6,20),mat('#ffe483',.35));inner.position.z=.065;group.add(inner);
-    cube(0,0,.07,.055,.32,.02,mat('#e39c09'),group);
-    scene.add(group);if(tracked)coins.push({mesh:group,x,y,z,taken:false});return group;
+  for (const b of level.walls) {
+    cube(b.x, b.y, b.z, b.w, b.h, b.d, stone, root, true);
+    for (let z = b.z - b.d / 2 + 3; z < b.z + b.d / 2; z += 9) {
+      cube(b.x * 0.98, 2, z, b.w + 0.3, 8, 0.7, edge);
+      cube(b.x * 0.93, 1.8, z, 0.18, 0.45, 0.6, gold);
+    }
   }
-  for(const z of [8,5,2,-2,-10,-14,-18,-22,-29,-33,-43,-47,-51,-57,-61,-65,-70,-77,-82,-86,-96,-100,-104,-108,-113,-117])makeCoin(Math.sin(z*.14)*3,1.15,z);
-  for(let i=0;i<3;i++)makeCoin(3.6+i*1.4,3.8,-21);
-  const blockCanvas=document.createElement('canvas');blockCanvas.width=128;blockCanvas.height=128;
-  const bc=blockCanvas.getContext('2d')!;bc.fillStyle='#f6b92e';bc.fillRect(0,0,128,128);bc.fillStyle='#ffe379';bc.fillRect(5,5,118,5);bc.fillRect(5,5,5,118);bc.fillStyle='#ce8312';bc.fillRect(5,118,118,5);bc.fillRect(118,5,5,118);
-  bc.fillStyle='#a5661a';for(const x of [15,106])for(const y of [15,106])bc.fillRect(x,y,7,7);
-  bc.font='900 91px Arial';bc.textAlign='center';bc.fillStyle='#ac6b16';bc.fillText('?',67,103);bc.fillStyle='#fff0a8';bc.fillText('?',63,99);
-  const blockTex=new THREE.CanvasTexture(blockCanvas);blockTex.colorSpace=THREE.SRGBColorSpace;const qmat=new THREE.MeshStandardMaterial({map:blockTex,roughness:.65});
-  const brickCanvas=document.createElement('canvas');brickCanvas.width=128;brickCanvas.height=128;const br=brickCanvas.getContext('2d')!;br.fillStyle='#75452a';br.fillRect(0,0,128,128);
-  for(let j=0;j<4;j++)for(let i=-1;i<3;i++){const x=i*64+(j%2)*32;br.fillStyle='#c37a42';br.fillRect(x+2,j*32+2,60,28);br.fillStyle='#e4a264';br.fillRect(x+3,j*32+3,58,3);}
-  const brickTex=new THREE.CanvasTexture(brickCanvas);brickTex.colorSpace=THREE.SRGBColorSpace;const brick=new THREE.MeshStandardMaterial({map:brickTex});
-  for(const [x,z] of [[0,-6],[1.45,-6],[-1.45,-6],[4.5,-21],[6,-21],[7.5,-21],[-3,-58],[-1.5,-58],[0,-58]]) {
-    const question=x===0||x===4.5||x===-3;
-    const mesh=cube(x,3.05,z,1.35,1.35,1.35,question?qmat:brick);
-    boxes.push({x,y:3.05,z,w:1.35,h:1.35,d:1.35,kind:question?'question':'brick',id:question?questions.length:undefined});
-    if(question){const c=makeCoin(x,4.2,z,false);c.visible=false;questions.push({mesh,used:false,baseY:3.05,bump:0,coin:c,originalMaterial:qmat});}
+  function pipe(x: number, y: number, z: number, h: number) {
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, h, 24), green);
+    body.position.set(x, y + h / 2, z);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    root.add(body);
+    const collar = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.2, 1.2, 0.48, 24),
+      rim,
+    );
+    collar.position.set(x, y + h - 0.08, z);
+    collar.castShadow = true;
+    root.add(collar);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.91, 24), darkGreen);
+    hole.rotation.x = -Math.PI / 2;
+    hole.position.set(x, y + h + 0.165, z);
+    root.add(hole);
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.045, 0.15, 8, 24),
+      rim,
+    );
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(x, y + h + 0.16, z);
+    root.add(ring);
+    boxes.push({
+      x,
+      y: y + (h + 0.3) / 2,
+      z,
+      w: 2.4,
+      h: h + 0.3,
+      d: 2.4,
+      kind: 'pipe',
+    });
   }
-  // A short staircase leads into the final flagpole clearing.
-  for(let i=0;i<4;i++)cube(-6,((i+1)*.6)/2,-110-i*1.5,3,(i+1)*.6,1.5,brick,scene,true);
-  function tree(x:number,z:number,s=1) {
-    const group=new THREE.Group();group.position.set(x,0,z);group.scale.setScalar(s);decorations.add(group);
-    cube(0,1.3,0,.55,2.6,.55,brown,group);ball(0,3,0,1.6,2.1,1.6,grass,group);ball(.4,3.7,.1,1.15,1.35,1.15,edge,group);
+  level.pipes.forEach((o) => pipe(o.x, o.y, o.z, o.height));
+  const coinGeometry = new THREE.CylinderGeometry(0.34, 0.34, 0.105, 20),
+    coinRingGeometry = new THREE.TorusGeometry(0.255, 0.024, 6, 20);
+  function makeCoin(
+    x: number,
+    y: number,
+    z: number,
+    tracked = true,
+    star?: number,
+  ) {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    const outer = new THREE.Mesh(coinGeometry, gold);
+    outer.rotation.x = Math.PI / 2;
+    outer.castShadow = true;
+    g.add(outer);
+    const inner = new THREE.Mesh(coinRingGeometry, cream);
+    inner.position.z = 0.065;
+    g.add(inner);
+    cube(0, 0, 0.07, 0.055, 0.32, 0.02, stripe, g);
+    if (star !== undefined) {
+      g.scale.setScalar(1.7);
+      const shape = new THREE.Shape();
+      for (let i = 0; i < 10; i++) {
+        const a = Math.PI / 2 + (i * Math.PI) / 5,
+          r = i % 2 ? 0.13 : 0.27;
+        const x = Math.cos(a) * r,
+          y = Math.sin(a) * r;
+        if (!i) shape.moveTo(x, y);
+        else shape.lineTo(x, y);
+      }
+      shape.closePath();
+      const emblem = new THREE.Mesh(new THREE.ShapeGeometry(shape), red);
+      emblem.position.z = 0.085;
+      g.add(emblem);
+    }
+    root.add(g);
+    if (tracked) coins.push({ mesh: g, x, y, z, taken: false, star });
+    return g;
   }
-  for(const [x,z,s] of [[-10,10,1],[10,3,1.1],[-10,-14,.8],[11,-31,1.1],[-6,-45,.9],[11,-63,.75],[-7,-82,1],[10,-96,.9],[-10,-123,1.2]])tree(x,z,s);
-  for(let i=0;i<55;i++) {
-    const section=i%3;const z=section===0?14-(i/3)*2.6:section===1?-44-(i/3)*2.3:-97-(i/3)*1.4;
-    const x=(i%2?1:-1)*(9+Math.sin(i*8)*1.1);
-    const m=i%3===0?mat('#fff5db'):i%3===1?mat('#ffc740'):mat('#fb727a');
-    cube(x,.16,z,.045,.3,.045,green,decorations);ball(x,.34,z,.13,.12,.13,m,decorations);
+  level.coins.forEach((o) => makeCoin(o.x, o.y, o.z));
+  level.stars.forEach((o, i) => makeCoin(o.x, o.y, o.z, true, i));
+  function pickup(x: number, y: number, z: number, kind: Power) {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    root.add(g);
+    g.visible = false;
+    if (kind === 'mushroom') {
+      ball(0, -0.08, 0, 0.24, 0.32, 0.24, cream, g);
+      ball(0, 0.18, 0, 0.52, 0.28, 0.52, red, g);
+      for (const s of [-1, 1]) {
+        ball(s * 0.25, 0.37, 0.16, 0.13, 0.05, 0.12, white, g);
+        ball(s * 0.09, -0.12, 0.23, 0.035, 0.075, 0.025, dark, g);
+      }
+    } else if (kind === 'flower') {
+      cube(0, -0.18, 0, 0.1, 0.5, 0.1, green, g);
+      for (let i = 0; i < 6; i++) {
+        const a = (i * Math.PI) / 3;
+        ball(
+          Math.cos(a) * 0.3,
+          0.3 + Math.sin(a) * 0.3,
+          0,
+          0.2,
+          0.2,
+          0.12,
+          red,
+          g,
+        );
+      }
+      ball(0, 0.3, 0.08, 0.23, 0.23, 0.12, gold, g);
+      ball(-0.08, 0.3, 0.2, 0.025, 0.065, 0.025, dark, g);
+      ball(0.08, 0.3, 0.2, 0.025, 0.065, 0.025, dark, g);
+    } else {
+      const shape = new THREE.Shape();
+      for (let i = 0; i < 10; i++) {
+        const a = Math.PI / 2 + (i * Math.PI) / 5,
+          r = i % 2 ? 0.23 : 0.52;
+        if (!i) shape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+        else shape.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      shape.closePath();
+      g.add(new THREE.Mesh(new THREE.ShapeGeometry(shape), gold));
+    }
+    pickups.push({ mesh: g, x, y, z, kind, active: false, taken: false });
+    return pickups.length - 1;
   }
-  function goomba(x:number,z:number,range=2.5) {
-    const g=new THREE.Group();scene.add(g);g.position.set(x,0,z);
-    ball(0,.62,0,.68,.57,.58,mat('#ae622d'),g);ball(0,.31,0,.36,.35,.36,cream,g);
-    ball(-.29,.13,.12,.29,.16,.38,mat('#53382a'),g);ball(.29,.13,.12,.29,.16,.38,mat('#53382a'),g);
-    for(const s of [-1,1]){ball(s*.23,.73,.47,.18,.22,.1,white,g);ball(s*.2,.72,.55,.07,.13,.035,mat('#272724'),g);const brow=cube(s*.23,.95,.51,.35,.065,.07,mat('#51301d'),g);brow.rotation.z=s*.25;}
-    cube(0,.42,.5,.28,.06,.06,mat('#53382a'),g);enemies.push({mesh:g,x,y:0,z,home:x,range,direction:1,alive:true,stompTime:0});
+  for (const b of level.blocks) {
+    const mesh = cube(b.x, b.y, b.z, 1.35, 1.35, 1.35, qmat);
+    boxes.push({
+      ...b,
+      w: 1.35,
+      h: 1.35,
+      d: 1.35,
+      kind: 'question',
+      id: questions.length,
+    });
+    const c = makeCoin(b.x, b.y + 1.2, b.z, false);
+    c.visible = false;
+    questions.push({
+      mesh,
+      used: false,
+      baseY: b.y,
+      bump: 0,
+      coin: c,
+      originalMaterial: qmat,
+      reward: b.reward,
+      powerIndex:
+        b.reward === 'coin' ? -1 : pickup(b.x, b.y + 1.25, b.z, b.reward),
+    });
   }
-  goomba(1,-17,4);goomba(-3,-30,3);goomba(4,-50,3);goomba(-1,-68,4);goomba(2,-82,3);goomba(0,-103,5);
-  // Rounded distant hills frame the course without obstructing the playable path.
-  for(let i=0;i<19;i++) {
-    const s=8+(i%4)*4;const x=(i%2?1:-1)*(35+(i%3)*15);const z=25-i*11;
-    ball(x,-3,z,s,s*(1.4+(i%3)*.35),s,mat(i%2?'#47976c':'#64b985'));
-    if(i%3===0){ball(x-1.3,8,z+s*.78,.35,1.3,.2,darkGreen);ball(x+1.3,8,z+s*.78,.35,1.3,.2,darkGreen);}
+  for (const e of level.enemies) {
+    const g = new THREE.Group();
+    g.position.set(e.x, e.y, e.z);
+    root.add(g);
+    if (e.kind === 'goomba') {
+      ball(0, 0.62, 0, 0.68, 0.57, 0.58, brown, g);
+      ball(0, 0.31, 0, 0.36, 0.35, 0.36, cream, g);
+      for (const s of [-1, 1]) {
+        ball(s * 0.29, 0.13, 0.12, 0.29, 0.16, 0.38, dark, g);
+        ball(s * 0.23, 0.73, 0.47, 0.18, 0.22, 0.1, white, g);
+        ball(s * 0.2, 0.72, 0.55, 0.07, 0.13, 0.035, dark, g);
+        const brow = cube(s * 0.23, 0.95, 0.51, 0.35, 0.065, 0.07, dark, g);
+        brow.rotation.z = s * 0.25;
+      }
+    } else {
+      ball(0, 0.57, -0.05, 0.56, 0.55, 0.5, green, g);
+      ball(0, 0.51, 0.18, 0.4, 0.42, 0.3, cream, g);
+      ball(0, 1.06, 0.25, 0.3, 0.35, 0.28, gold, g);
+      for (const s of [-1, 1]) {
+        ball(s * 0.3, 0.13, 0.16, 0.24, 0.14, 0.33, brown, g);
+        ball(s * 0.12, 1.17, 0.49, 0.095, 0.13, 0.07, white, g);
+        ball(s * 0.12, 1.17, 0.55, 0.036, 0.07, 0.025, dark, g);
+      }
+    }
+    enemies.push({
+      ...e,
+      mesh: g,
+      home: e.x,
+      direction: 1,
+      alive: true,
+      stompTime: 0,
+      shell: false,
+      stun: 0,
+    });
   }
-  for(let i=0;i<19;i++){
-    const g=new THREE.Group();g.position.set(Math.sin(i*4.4)*65,18+(i%4)*5,40-i*12);scene.add(g);
-    for(let j=0;j<4;j++)ball(j*1.8,Math.sin(j*2)*.4,0,2.1,1.4,1.1,white,g);clouds.push(g);
+  const flame = new THREE.MeshStandardMaterial({
+    color: '#ff9737',
+    emissive: '#ff541c',
+    emissiveIntensity: 1.3,
+  });
+  allMaterials.add(flame);
+  for (const f of level.firebars) {
+    const g = new THREE.Group();
+    g.position.set(f.x, f.y, f.z);
+    root.add(g);
+    ball(f.x, f.y - 0.2, f.z, 0.35, 0.4, 0.35, stone);
+    for (let r = 0.6; r <= f.length; r += 0.55)
+      ball(r, 0, 0, 0.26, 0.26, 0.26, flame, g);
+    firebars.push({ ...f, mesh: g, angle: 0 });
   }
-  const pole=new THREE.Mesh(new THREE.CylinderGeometry(.075,.075,10,12),cream);pole.position.set(0,5,-122);pole.castShadow=true;scene.add(pole);ball(0,10.1,-122,.23,.23,.23,gold);
-  const flagShape=new THREE.Shape();flagShape.moveTo(0,0);flagShape.lineTo(2,-.7);flagShape.lineTo(0,-1.4);flagShape.closePath();
-  const flag=new THREE.Mesh(new THREE.ShapeGeometry(flagShape),new THREE.MeshStandardMaterial({color:'#ed4042',side:THREE.DoubleSide}));const flagGroup=new THREE.Group();flagGroup.position.set(.08,9.5,-122);flagGroup.add(flag);scene.add(flagGroup);
-  const mark=ball(.5,-.5,.03,.24,.24,.03,white,flagGroup);mark.castShadow=false;
-  cube(0,.25,-122,1,.5,1,brick,scene,true);
-  // Small castle beyond the finish.
-  cube(0,2.2,-129,5,4.4,2.5,mat('#f0dfbb'));
-  const door=cube(0,.9,-127.73,1.15,1.8,.03,mat('#674431'));door.castShadow=false;
-  for(const x of [-2.8,2.8]){cube(x,2.6,-129,1.6,5.2,2,mat('#fff0cf'));const roof=new THREE.Mesh(new THREE.ConeGeometry(1.4,2,4),mat('#e95048'));roof.rotation.y=Math.PI/4;roof.position.set(x,6.2,-129);roof.castShadow=true;scene.add(roof);}
-  for(let i=0;i<5;i++)cube(-2+i,4.7,-129,.55,.7,2.5,cream);
-  return {boxes,coins,enemies,questions,clouds,flag,flagGroup,decorations};
+  if (level.theme === 'lava' || level.theme === 'castle') {
+    cube(
+      0,
+      -3,
+      level.goal.z / 2,
+      180,
+      0.5,
+      Math.abs(level.goal.z) + 120,
+      flame,
+    );
+    for (let i = 0; i < Math.ceil(Math.abs(level.goal.z) / 4); i++)
+      cube(
+        (i % 2 ? 1 : -1) * (10 + (i % 5) * 7),
+        -2.73,
+        14 - i * 4,
+        4,
+        0.04,
+        1.5,
+        stripe,
+      );
+  }
+  // Distant scenery stays beyond jump range and never creates a hidden bypass.
+  if (['meadow', 'sky', 'night'].includes(level.theme)) {
+    for (let i = 0; i < Math.ceil(Math.abs(level.goal.z) / 11); i++) {
+      const x = (i % 2 ? 1 : -1) * (48 + (i % 3) * 12),
+        z = 26 - i * 11,
+        s = 8 + (i % 4) * 3;
+      ball(x, -9, z, s, s * 1.5, s, i % 2 ? grass : edge, decorations);
+    }
+    for (let i = 0; i < Math.ceil(Math.abs(level.goal.z) / 20); i++) {
+      const g = new THREE.Group();
+      g.position.set(Math.sin(i * 4.4) * 55, 18 + (i % 4) * 4, 35 - i * 13);
+      root.add(g);
+      for (let j = 0; j < 4; j++)
+        ball(j * 1.8, Math.sin(j * 2) * 0.4, 0, 2.1, 1.4, 1.1, white, g);
+      clouds.push(g);
+    }
+  }
+  if (level.theme === 'meadow')
+    for (const s of [-1, 1]) {
+      // Trees stand on their own unreachable outcrops.
+      for (let i = 0; i < Math.ceil(Math.abs(level.goal.z) / 35); i++) {
+        const x = s * (32 + (i % 2) * 4),
+          z = 4 - i * 23;
+        ball(x, -3, z, 4, 3, 4, grass, decorations);
+        cube(x, 1, z, 0.55, 2.6, 0.55, brown, decorations);
+        ball(x, 3, z, 1.6, 2.1, 1.6, grass, decorations);
+        ball(x + 0.4, 3.7, z, 1.15, 1.35, 1.15, edge, decorations);
+      }
+    }
+  function sign(x: number, y: number, z: number, label: string) {
+    const material = new THREE.MeshStandardMaterial({
+      map: texture((c) => {
+        c.fillStyle = '#fff3ce';
+        c.fillRect(0, 0, 128, 128);
+        c.fillStyle = '#9a5634';
+        c.fillRect(4, 4, 120, 5);
+        c.font = '900 20px Arial';
+        c.textAlign = 'center';
+        c.fillText(label, 64, 60);
+        c.font = '900 42px Arial';
+        c.fillText('↑', 64, 109);
+      }),
+      roughness: 0.9,
+    });
+    cube(x, y + 0.8, z, 0.15, 1.6, 0.15, brown, root, true);
+    cube(x, y + 1.65, z, 1.6, 1.4, 0.12, material, root, true);
+  }
+  sign(-4.5, 0, 5, 'JUMP');
+  for (let act = 1; act < 4; act++)
+    sign(-4.5, 0, 5 - act * 280, `ACT ${act + 1}`);
+  if (level.theme === 'cave')
+    cube(
+      0,
+      12.6,
+      level.goal.z / 2,
+      18,
+      0.6,
+      Math.abs(level.goal.z) + 45,
+      stone,
+      root,
+      true,
+    );
+  const cp = level.checkpoint;
+  const checkpoint = new THREE.Group();
+  checkpoint.position.set(cp.x, cp.y, cp.z);
+  root.add(checkpoint);
+  cube(-2.5, 1.1, 0, 0.1, 2.2, 0.1, cream, checkpoint);
+  cube(-1.95, 1.85, 0, 1, 0.6, 0.05, red, checkpoint);
+  // Ground marker identifies the exact, safe respawn location.
+  const cpRing = new THREE.Mesh(
+    new THREE.TorusGeometry(0.85, 0.07, 8, 32),
+    gold,
+  );
+  cpRing.rotation.x = -Math.PI / 2;
+  cpRing.position.y = 0.045;
+  checkpoint.add(cpRing);
+  const checkpoints = [checkpoint];
+  for (const other of (level.checkpoints ?? []).slice(1)) {
+    const marker = checkpoint.clone(true);
+    marker.position.set(other.x, other.y, other.z);
+    root.add(marker);
+    checkpoints.push(marker);
+  }
+  const goal = level.goal;
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.075, 0.075, 10, 12),
+    cream,
+  );
+  pole.position.set(goal.x, goal.y + 5, goal.z);
+  pole.castShadow = true;
+  root.add(pole);
+  ball(goal.x, goal.y + 10.1, goal.z, 0.23, 0.23, 0.23, gold);
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.lineTo(2, -0.7);
+  shape.lineTo(0, -1.4);
+  shape.closePath();
+  const flag = new THREE.Mesh(
+    new THREE.ShapeGeometry(shape),
+    new THREE.MeshStandardMaterial({
+      color: '#ed4042',
+      side: THREE.DoubleSide,
+    }),
+  );
+  const flagGroup = new THREE.Group();
+  flagGroup.position.set(goal.x + 0.08, goal.y + 9.5, goal.z);
+  flagGroup.add(flag);
+  root.add(flagGroup);
+  ball(0.5, -0.5, 0.03, 0.24, 0.24, 0.03, white, flagGroup);
+  cube(goal.x, goal.y + 0.2, goal.z, 1, 0.4, 1, brick, root, true);
+  // The castle is beyond the flag and uses the same visible and collision bounds.
+  cube(0, goal.y + 2.2, goal.z - 7, 5, 4.4, 2.5, cream, root, true);
+  cube(0, goal.y + 0.9, goal.z - 5.73, 1.15, 1.8, 0.03, dark);
+  for (const x of [-2.8, 2.8]) {
+    cube(x, goal.y + 2.6, goal.z - 7, 1.6, 5.2, 2, cream, root, true);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.4, 2, 4), red);
+    roof.rotation.y = Math.PI / 4;
+    roof.position.set(x, goal.y + 6.2, goal.z - 7);
+    root.add(roof);
+  }
+  for (let i = 0; i < 5; i++)
+    cube(-2 + i, goal.y + 4.7, goal.z - 7, 0.55, 0.7, 2.5, cream);
+  let boss: Boss | undefined,
+    gate: THREE.Mesh | undefined,
+    gateBox: Box | undefined;
+  if (level.boss) {
+    const b = level.boss,
+      g = new THREE.Group();
+    g.position.set(b.x, b.y, b.z);
+    root.add(g);
+    ball(0, 1.05, -0.18, 1.15, 1.12, 0.8, green, g);
+    ball(0, 0.95, 0.35, 0.84, 0.92, 0.65, gold, g);
+    ball(0, 1.94, 0.55, 0.65, 0.64, 0.6, gold, g);
+    ball(0, 1.7, 1, 0.68, 0.3, 0.4, cream, g);
+    for (const side of [-1, 1]) {
+      ball(side * 0.65, 0.19, 0.4, 0.43, 0.25, 0.65, brown, g);
+      ball(side * 0.98, 1.1, 0.4, 0.36, 0.58, 0.34, gold, g);
+      ball(side * 0.25, 2.15, 1.02, 0.18, 0.19, 0.1, white, g);
+      ball(side * 0.25, 2.15, 1.1, 0.06, 0.11, 0.03, dark, g);
+      const horn = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.6, 8), cream);
+      horn.position.set(side * 0.55, 2.48, 0.35);
+      horn.rotation.z = -side * 0.4;
+      g.add(horn);
+    }
+    for (let i = 0; i < 5; i++) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.55, 8), cream);
+      spike.position.set(
+        Math.sin(i * 1.26) * 0.86,
+        1.1 + Math.cos(i * 1.26) * 0.8,
+        -0.9,
+      );
+      spike.rotation.x = -Math.PI / 2;
+      g.add(spike);
+    }
+    ball(0, 2.53, 0.24, 0.35, 0.22, 0.6, red, g);
+    boss = {
+      ...b,
+      mesh: g,
+      home: b.x,
+      health: 3,
+      cooldown: 1.5,
+      hurt: 0,
+      alive: true,
+    };
+    gate = cube(0, 6, goal.z + 4, 12, 12, 0.5, red);
+    gateBox = { x: 0, y: 6, z: goal.z + 4, w: 12, h: 12, d: 0.5, kind: 'gate' };
+    boxes.push(gateBox);
+  }
+  function dispose() {
+    root.removeFromParent();
+    const geometries = new Set<THREE.BufferGeometry>(),
+      textures = new Set<THREE.Texture>();
+    root.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        geometries.add(o.geometry);
+        for (const m of Array.isArray(o.material) ? o.material : [o.material])
+          allMaterials.add(m);
+      }
+    });
+    // Include original question materials even after every block is spent.
+    for (const m of allMaterials) {
+      if (m.userData.managedExternally) continue;
+      for (const value of Object.values(m))
+        if (value instanceof THREE.Texture) textures.add(value);
+      m.dispose();
+    }
+    textures.forEach((t) => t.dispose());
+    geometries.forEach((g) => g.dispose());
+  }
+  return {
+    root,
+    level,
+    boxes,
+    coins,
+    enemies,
+    questions,
+    pickups,
+    platforms,
+    firebars,
+    boss,
+    clouds,
+    flag,
+    flagGroup,
+    checkpoint,
+    checkpoints,
+    decorations,
+    gate,
+    gateBox,
+    dispose,
+  };
 }

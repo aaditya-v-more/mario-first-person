@@ -16,7 +16,10 @@
     "test:fullscreen": "esbuild tests/fullscreen.test.ts --bundle --platform=node --format=esm --outfile=work/fullscreen-tests.mjs && node --test work/fullscreen-tests.mjs",
     "test:mobile": "npm run export:html && node --test tests/mobile.browser.mjs",
     "test:graphics": "npm run export:html && node --test tests/graphics.browser.mjs",
-    "build:vercel": "npm run export:html && node scripts/build-vercel.mjs"
+    "build:vercel": "npm run export:html && node scripts/build-vercel.mjs",
+    "build:plethora": "node scripts/build-plethora.mjs",
+    "test:plethora": "npm run build:plethora && node --test tests/plethora.test.mjs",
+    "test:campaign": "npm run export:html && node --test tests/campaign.browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

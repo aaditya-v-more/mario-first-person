@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "runtime": "plethora-bit@2",
+  "entry": "main.js",
+  "title": "Mario - First Person",
+  "description": "A first-person Mario adventure with 24 courses across six worlds, 72 star coins, power-ups, moving platforms, checkpoints, and boss encounters. Play with touch controls or a keyboard, and save your course unlocks and medals.",
+  "tags": [
+    "game",
+    "3d",
+    "platformer",
+    "adventure"
+  ],
+  "permissions": [
+    "backgroundMusic"
+  ],
+  "dependencies": [
+    "three@0.164.1"
+  ]
+}
