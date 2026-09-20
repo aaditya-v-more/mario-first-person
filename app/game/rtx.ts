@@ -94,13 +94,13 @@ export class RtxGraphics {
       scene.background = this.sky;
       scene.fog = original.fog?.clone() ?? null;
       sun.color.copy(original.sunColor);
-      sun.intensity = original.sunIntensity * 1.3;
+      sun.intensity = original.sunIntensity * 1.15;
       sun.shadow.radius = 1.75;
       sun.shadow.normalBias = 0.045;
       hemisphere.color.copy(original.skyColor);
       hemisphere.groundColor.copy(original.groundColor);
-      hemisphere.intensity = 1.4;
-      renderer.toneMappingExposure = 1.05;
+      hemisphere.intensity = original.skyIntensity * 0.6;
+      renderer.toneMappingExposure = 1.0;
       // Capture the surrounding terrain once so polished surfaces reflect the
       // actual course as well as the sky, without six extra renders every frame.
       const pmrem = new THREE.PMREMGenerator(renderer);
@@ -115,7 +115,7 @@ export class RtxGraphics {
         pmrem.dispose();
       }
       scene.environment = this.environment.texture;
-      scene.environmentIntensity = 0.7;
+      scene.environmentIntensity = 0.38;
       this.restoreMaterials = enhanceMaterials(scene);
 
       renderer.setPixelRatio(
@@ -139,7 +139,7 @@ export class RtxGraphics {
       this.ao.blendIntensity = 0.75;
       this.composer.addPass(this.ao);
       this.composer.addPass(
-        new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.45, 1.15),
+        new UnrealBloomPass(new THREE.Vector2(1, 1), 0.18, 0.4, 1.2),
       );
       this.composer.addPass(new OutputPass());
       this.fxaa = new ShaderPass(FXAAShader);

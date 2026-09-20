@@ -8,6 +8,7 @@ export type Box = {
   kind?: string;
   id?: number;
   active?: boolean;
+  hidden?: boolean;
 };
 export type Player = {
   x: number;
@@ -17,9 +18,12 @@ export type Player = {
   vy: number;
   vz: number;
   grounded: boolean;
+  height?: number;
 };
 export const RADIUS = 0.34;
 export const HEIGHT = 1.65;
+export const SMALL_HEIGHT = 0.82;
+export const playerHeight = (p: Player) => p.height ?? HEIGHT;
 export const GRAVITY = 25;
 export const JUMP_SPEED = 14;
 export function overlapXZ(p: Player, b: Box) {
@@ -33,8 +37,9 @@ export function overlapXZ(p: Player, b: Box) {
 function intersects(p: Player, b: Box) {
   return (
     b.active !== false &&
+    !b.hidden &&
     overlapXZ(p, b) &&
-    p.y + HEIGHT > b.y - b.h / 2 + 0.001 &&
+    p.y + playerHeight(p) > b.y - b.h / 2 + 0.001 &&
     p.y < b.y + b.h / 2 - 0.001
   );
 }
@@ -43,6 +48,7 @@ function integrate(
   boxes: Box[],
   dt: number,
   onBump?: (b: Box) => void,
+  gravity = GRAVITY,
 ) {
   p.x += p.vx * dt;
   for (const b of boxes)
@@ -58,7 +64,7 @@ function integrate(
     }
   const oldY = p.y;
   const rising = p.vy > 0;
-  p.vy -= GRAVITY * dt;
+  p.vy -= gravity * dt;
   p.y += p.vy * dt;
   p.grounded = false;
   let landing = -Infinity,
@@ -68,12 +74,12 @@ function integrate(
     if (b.active === false || !overlapXZ(p, b)) continue;
     const top = b.y + b.h / 2,
       bottom = b.y - b.h / 2;
-    if (p.vy <= 0 && oldY >= top - 0.03 && p.y <= top)
+    if (!b.hidden && p.vy <= 0 && oldY >= top - 0.03 && p.y <= top)
       landing = Math.max(landing, top);
     else if (
       rising &&
-      oldY + HEIGHT <= bottom + 0.03 &&
-      p.y + HEIGHT >= bottom &&
+      oldY + playerHeight(p) <= bottom + 0.03 &&
+      p.y + playerHeight(p) >= bottom &&
       bottom < ceiling
     ) {
       ceiling = bottom;
@@ -85,7 +91,7 @@ function integrate(
     p.vy = 0;
     p.grounded = true;
   } else if (bumped) {
-    p.y = ceiling - HEIGHT;
+    p.y = ceiling - playerHeight(p);
     p.vy = 0;
     onBump?.(bumped);
   }
@@ -97,6 +103,7 @@ export function stepPlayer(
   boxes: Box[],
   dt: number,
   onBump?: (b: Box) => void,
+  gravity = GRAVITY,
 ) {
   if (!Number.isFinite(dt) || dt <= 0) return;
   dt = Math.min(dt, 0.25);
@@ -109,7 +116,8 @@ export function stepPlayer(
         0.15,
     ),
   );
-  for (let i = 0; i < steps; i++) integrate(p, boxes, dt / steps, onBump);
+  for (let i = 0; i < steps; i++)
+    integrate(p, boxes, dt / steps, onBump, gravity);
 }
 export function newPlayer(): Player {
   return { x: 0, y: 0, z: 13, vx: 0, vy: 0, vz: 0, grounded: true };

@@ -1,7 +1,18 @@
+import { shadeSurface } from './surface-shaders';
 import * as THREE from 'three';
 import type { Box } from './physics';
 import { createTextureCanvas } from './browser-runtime';
-import { LEVELS, PALETTES, type Level, type Power } from './levels';
+import {
+  LEVELS,
+  PALETTES,
+  AREA_SPACING,
+  COURSE_WIDTH,
+  type Level,
+  type Power,
+  type Reward,
+  type EnemySpec,
+} from './levels';
+import type { Motion } from './level-types';
 export type Coin = {
   mesh: THREE.Group;
   x: number;
@@ -10,19 +21,21 @@ export type Coin = {
   taken: boolean;
   star?: number;
 };
-export type Enemy = {
+export type Enemy = EnemySpec & {
   mesh: THREE.Group;
-  x: number;
-  y: number;
-  z: number;
+  heading?: number;
   home: number;
-  range: number;
+  homeX: number;
+  homeY: number;
+  homeZ: number;
   direction: number;
   alive: boolean;
   stompTime: number;
-  kind: 'goomba' | 'koopa';
   shell: boolean;
   stun: number;
+  cooldown: number;
+  activated: boolean;
+  vy: number;
 };
 export type Question = {
   mesh: THREE.Mesh;
@@ -31,8 +44,11 @@ export type Question = {
   bump: number;
   coin: THREE.Group;
   originalMaterial: THREE.Material;
-  reward: 'coin' | Power;
+  reward: Reward;
+  box: Box;
+  portal?: string;
   powerIndex: number;
+  remaining: number;
 };
 export type Pickup = {
   mesh: THREE.Group;
@@ -43,7 +59,8 @@ export type Pickup = {
   active: boolean;
   taken: boolean;
 };
-export type MovingPlatform = {
+export type MovingPlatform = Motion & {
+  started?: boolean;
   mesh: THREE.Group;
   box: Box;
   axis: 'x' | 'y' | 'z';
@@ -60,6 +77,8 @@ export type Firebar = {
   length: number;
   speed: number;
   angle: number;
+  plane?: 'vertical' | 'horizontal';
+  area?: number;
 };
 export type Boss = {
   mesh: THREE.Group;
@@ -72,6 +91,7 @@ export type Boss = {
   hurt: number;
   alive: boolean;
 };
+type TerrainVisual = { mesh: THREE.Object3D; box: Box; hide?: () => void };
 export type World = {
   root: THREE.Group;
   level: Level;
@@ -89,9 +109,14 @@ export type World = {
   checkpoint: THREE.Group;
   checkpoints: THREE.Group[];
   decorations: THREE.Group;
-  gate?: THREE.Mesh;
-  gateBox?: Box;
   dispose: () => void;
+  setArea: (id: number) => void;
+  bricks: TerrainVisual[];
+  bridges: TerrainVisual[];
+  springs: Box[];
+  axe?: THREE.Group;
+  vines: Map<string, THREE.Group>;
+  showPower: (index: number, kind: Power) => void;
 };
 const mat = (color: THREE.ColorRepresentation, roughness = 0.75) =>
   new THREE.MeshStandardMaterial({ color, roughness });
@@ -103,6 +128,20 @@ export function makeWorld(
 ): World {
   const root = new THREE.Group();
   scene.add(root);
+  const areaGroups = level.areas.map(() => {
+    const g = new THREE.Group();
+    root.add(g);
+    return g;
+  });
+  const add = (
+    object: THREE.Object3D,
+    area = Math.round(object.position.x / AREA_SPACING),
+  ) => (areaGroups[area] ?? root).add(object);
+  const staticGroups: { mesh: THREE.Group; area: number }[] = [];
+  const bricks: TerrainVisual[] = [],
+    bridges: TerrainVisual[] = [],
+    springs: Box[] = [];
+  const vines = new Map<string, THREE.Group>();
   const boxes: Box[] = [],
     coins: Coin[] = [],
     enemies: Enemy[] = [],
@@ -112,10 +151,10 @@ export function makeWorld(
     firebars: Firebar[] = [],
     clouds: THREE.Group[] = [];
   const palette = PALETTES[level.theme];
-  const grass = mat(palette.ground),
-    edge = mat(palette.edge),
-    green = mat('#159341', 0.35),
-    rim = mat('#24bf55', 0.3),
+  const grass = mat('#69bf38'),
+    edge = mat('#86d747'),
+    green = new THREE.MeshPhysicalMaterial({ color: '#159341', roughness: 0.3, clearcoat: 0.65, clearcoatRoughness: 0.22 }),
+    rim = new THREE.MeshPhysicalMaterial({ color: '#24bf55', roughness: 0.24, clearcoat: 0.7, clearcoatRoughness: 0.18 }),
     darkGreen = mat('#0a5735'),
     brown = mat('#a55730'),
     cream = mat('#fff7db'),
@@ -157,7 +196,8 @@ export function makeWorld(
     mesh.scale.set(w, h, d);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    parent.add(mesh);
+    if (parent === root) add(mesh);
+    else parent.add(mesh);
     if (solid) boxes.push({ x, y, z, w, h, d });
     return mesh;
   }
@@ -176,7 +216,8 @@ export function makeWorld(
     mesh.position.set(x, y, z);
     mesh.scale.set(sx, sy, sz);
     mesh.castShadow = true;
-    parent.add(mesh);
+    if (parent === root) add(mesh);
+    else parent.add(mesh);
     return mesh;
   }
   function texture(draw: (ctx: CanvasRenderingContext2D) => void) {
@@ -213,7 +254,7 @@ export function makeWorld(
         c.fillRect(x + 3, j * 32 + 3, 58, 3);
       }
   });
-  const brick = new THREE.MeshStandardMaterial({ map: brickTex });
+  const brick = new THREE.MeshStandardMaterial({ map: brickTex, bumpMap: brickTex, bumpScale: 0.045, roughness: 0.88 });
   const qmat = new THREE.MeshStandardMaterial({
     map: texture((c) => {
       c.fillStyle = '#f6b92e';
@@ -243,11 +284,14 @@ export function makeWorld(
   [soil, brick, qmat, stone, wood, stripe, cloud].forEach((m) =>
     allMaterials.add(m),
   );
+  const areaStone = level.areas.map((a) => mat(PALETTES[a.theme].ground)),
+    areaEdge = level.areas.map((a) => mat(PALETTES[a.theme].edge));
+  for (const m of [...areaStone, ...areaEdge]) allMaterials.add(m);
   for (const surface of level.surfaces) {
     const { x, y, z, w, h, d, style, moving } = surface;
     const g = new THREE.Group();
     g.position.set(x, y, z);
-    root.add(g);
+    add(g);
     const material =
       style === 'brick'
         ? brick
@@ -256,8 +300,12 @@ export function makeWorld(
           : style === 'cloud'
             ? cloud
             : style === 'stone'
-              ? stone
-              : soil;
+              ? areaStone[surface.area ?? 0]
+              : style === 'shroom'
+                ? red
+                : style === 'coral'
+                  ? mat('#ed91ad')
+                  : soil;
     cube(0, -0.09, 0, w, h - 0.18, d, material, g);
     cube(
       0,
@@ -266,13 +314,43 @@ export function makeWorld(
       w,
       0.18,
       d,
-      style === 'ground' ? grass : style === 'wood' ? stripe : edge,
+      style === 'ground' || style === 'tree'
+        ? grass
+        : style === 'brick'
+          ? brick
+          : style === 'stone'
+            ? areaStone[surface.area ?? 0]
+            : style === 'shroom'
+              ? red
+              : style === 'coral'
+                ? mat('#ed91ad')
+                : style === 'wood' || style === 'bridge'
+                  ? stripe
+                  : areaEdge[surface.area ?? 0],
       g,
     );
-    const box = { x, y, z, w, h, d, kind: moving ? 'moving' : 'terrain' };
+    if (!moving) staticGroups.push({ mesh: g, area: surface.area ?? 0 });
+    const box: Box = {
+      x,
+      y,
+      z,
+      w,
+      h,
+      d,
+      kind: surface.breakable ? 'brick' : moving ? 'moving' : 'terrain',
+    };
+    if (surface.breakable) bricks.push({ mesh: g, box });
+    if (surface.castleBridge) bridges.push({ mesh: g, box });
+    if (surface.spring) springs.push(box);
     boxes.push(box);
+    if (moving && !moving.mode) {
+      const initial =
+        box[moving.axis] + Math.sin(moving.phase ?? 0) * moving.distance;
+      g.position[moving.axis] = initial;
+    }
     if (moving) {
       platforms.push({
+        ...moving,
         mesh: g,
         box,
         axis: moving.axis,
@@ -281,6 +359,7 @@ export function makeWorld(
         speed: moving.speed,
         phase: moving.phase || 0,
       });
+      if (!moving.mode) box[moving.axis] = g.position[moving.axis];
       for (let i = 0; i < 5; i++)
         cube(
           -w / 2 + 0.45 + (i * (w - 0.9)) / 4,
@@ -309,6 +388,18 @@ export function makeWorld(
       lawn.receiveShadow = true;
       g.add(lawn);
     }
+    if (style === 'tree' || style === 'shroom') {
+      cube(
+        0,
+        -(h / 2 + 2.5),
+        0,
+        style === 'shroom' ? 0.6 : 1,
+        5,
+        Math.max(0.3, d * 0.3),
+        style === 'shroom' ? cream : brown,
+        g,
+      );
+    }
     if (style === 'cloud')
       for (const side of [-1, 1])
         for (let j = 0; j < Math.ceil(d / 3); j++)
@@ -324,47 +415,53 @@ export function makeWorld(
           );
   }
   for (const b of level.walls) {
-    cube(b.x, b.y, b.z, b.w, b.h, b.d, stone, root, true);
-    for (let z = b.z - b.d / 2 + 3; z < b.z + b.d / 2; z += 9) {
-      cube(b.x * 0.98, 2, z, b.w + 0.3, 8, 0.7, edge);
-      cube(b.x * 0.93, 1.8, z, 0.18, 0.45, 0.6, gold);
-    }
+    boxes.push({ ...b });
+    const a = Math.max(
+      0,
+      Math.min(level.areas.length - 1, Math.round(b.x / AREA_SPACING)),
+    );
+    cube(b.x, b.y, b.z, b.w, b.h, b.d, areaStone[a]);
   }
-  function pipe(x: number, y: number, z: number, h: number) {
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, h, 24), green);
-    body.position.set(x, y + h / 2, z);
+  for (const o of level.pipes) {
+    const w = o.w ?? 2.4,
+      d = o.d ?? 2.4,
+      h = o.height;
+    const group = new THREE.Group();
+    group.position.set(o.x, o.y, o.z);
+    add(group, o.area);
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(1, 1, Math.max(0.1, h - 0.15), 24),
+      green,
+    );
+    body.position.y = (h - 0.15) / 2;
+    body.scale.set(w / 2.4, 1, d / 2.4);
     body.castShadow = true;
     body.receiveShadow = true;
-    root.add(body);
+    group.add(body);
     const collar = new THREE.Mesh(
-      new THREE.CylinderGeometry(1.2, 1.2, 0.48, 24),
+      new THREE.CylinderGeometry(1.2, 1.2, 0.24, 24),
       rim,
     );
-    collar.position.set(x, y + h - 0.08, z);
+    collar.position.y = h - 0.12;
+    collar.scale.set(w / 2.4, 1, d / 2.4);
     collar.castShadow = true;
-    root.add(collar);
-    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.91, 24), darkGreen);
+    group.add(collar);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(0.93, 24), darkGreen);
     hole.rotation.x = -Math.PI / 2;
-    hole.position.set(x, y + h + 0.165, z);
-    root.add(hole);
-    const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(1.045, 0.15, 8, 24),
-      rim,
-    );
-    ring.rotation.x = Math.PI / 2;
-    ring.position.set(x, y + h + 0.16, z);
-    root.add(ring);
-    boxes.push({
-      x,
-      y: y + (h + 0.3) / 2,
-      z,
-      w: 2.4,
-      h: h + 0.3,
-      d: 2.4,
-      kind: 'pipe',
-    });
+    hole.position.y = h + 0.006;
+    hole.scale.set(w / 2.4, d / 2.4, 1);
+    group.add(hole);
+    if (o.horizontal) {
+      const mouth = new THREE.Mesh(
+        new THREE.CircleGeometry(0.72, 24),
+        darkGreen,
+      );
+      mouth.position.set(0, Math.min(0.8, h / 2), d / 2 + 0.01);
+      mouth.scale.x = w / 1.6;
+      group.add(mouth);
+    }
+    boxes.push({ x: o.x, y: o.y + h / 2, z: o.z, w, h, d, kind: 'pipe' });
   }
-  level.pipes.forEach((o) => pipe(o.x, o.y, o.z, o.height));
   const coinGeometry = new THREE.CylinderGeometry(0.34, 0.34, 0.105, 20),
     coinRingGeometry = new THREE.TorusGeometry(0.255, 0.024, 6, 20);
   function makeCoin(
@@ -400,7 +497,7 @@ export function makeWorld(
       emblem.position.z = 0.085;
       g.add(emblem);
     }
-    root.add(g);
+    add(g);
     if (tracked) coins.push({ mesh: g, x, y, z, taken: false, star });
     return g;
   }
@@ -409,11 +506,11 @@ export function makeWorld(
   function pickup(x: number, y: number, z: number, kind: Power) {
     const g = new THREE.Group();
     g.position.set(x, y, z);
-    root.add(g);
+    add(g);
     g.visible = false;
-    if (kind === 'mushroom') {
+    if (kind === 'mushroom' || kind === 'life') {
       ball(0, -0.08, 0, 0.24, 0.32, 0.24, cream, g);
-      ball(0, 0.18, 0, 0.52, 0.28, 0.52, red, g);
+      ball(0, 0.18, 0, 0.52, 0.28, 0.52, kind === 'life' ? green : red, g);
       for (const s of [-1, 1]) {
         ball(s * 0.25, 0.37, 0.16, 0.13, 0.05, 0.12, white, g);
         ball(s * 0.09, -0.12, 0.23, 0.035, 0.075, 0.025, dark, g);
@@ -451,33 +548,70 @@ export function makeWorld(
     return pickups.length - 1;
   }
   for (const b of level.blocks) {
-    const mesh = cube(b.x, b.y, b.z, 1.35, 1.35, 1.35, qmat);
-    boxes.push({
+    const material = b.brick ? brick : qmat;
+    const mesh = cube(
+      b.x,
+      b.y,
+      b.z,
+      b.w ?? 1.35,
+      b.h ?? 1.35,
+      b.d ?? 1.35,
+      material,
+    );
+    mesh.visible = !b.hidden;
+    const box: Box = {
       ...b,
-      w: 1.35,
-      h: 1.35,
-      d: 1.35,
+      w: b.w ?? 1.35,
+      h: b.h ?? 1.35,
+      d: b.d ?? 1.35,
       kind: 'question',
+      hidden: b.hidden,
       id: questions.length,
-    });
+    };
+    boxes.push(box);
     const c = makeCoin(b.x, b.y + 1.2, b.z, false);
     c.visible = false;
+    const actual = b.reward === 'upgrade' ? 'mushroom' : b.reward;
     questions.push({
       mesh,
       used: false,
       baseY: b.y,
       bump: 0,
       coin: c,
-      originalMaterial: qmat,
+      box,
+      portal: b.portal,
+      originalMaterial: material,
       reward: b.reward,
+      remaining: b.coins ?? 1,
       powerIndex:
-        b.reward === 'coin' ? -1 : pickup(b.x, b.y + 1.25, b.z, b.reward),
+        actual === 'coin' || actual === 'vine'
+          ? -1
+          : pickup(b.x, b.y + (b.h ?? 1.35) / 2 + 0.55, b.z, actual),
     });
+    if (b.portal) {
+      const vine = new THREE.Group();
+      vine.position.set(b.x, b.y + 0.5, b.z);
+      add(vine, b.area);
+      cube(0, 3, 0, 0.12, 6, 0.12, green, vine);
+      for (let i = 0; i < 7; i++)
+        ball(
+          (i % 2 ? 1 : -1) * 0.2,
+          i * 0.8,
+          0.05,
+          0.23,
+          0.12,
+          0.12,
+          rim,
+          vine,
+        );
+      vine.visible = false;
+      vines.set(b.portal, vine);
+    }
   }
   for (const e of level.enemies) {
     const g = new THREE.Group();
     g.position.set(e.x, e.y, e.z);
-    root.add(g);
+    add(g);
     if (e.kind === 'goomba') {
       ball(0, 0.62, 0, 0.68, 0.57, 0.58, brown, g);
       ball(0, 0.31, 0, 0.36, 0.35, 0.36, cream, g);
@@ -488,6 +622,59 @@ export function makeWorld(
         const brow = cube(s * 0.23, 0.95, 0.51, 0.35, 0.065, 0.07, dark, g);
         brow.rotation.z = s * 0.25;
       }
+    } else if (
+      [
+        'cheep',
+        'blooper',
+        'piranha',
+        'podoboo',
+        'lakitu',
+        'spiny',
+        'beetle',
+      ].includes(e.kind)
+    ) {
+      const color =
+        e.kind === 'blooper'
+          ? white
+          : e.kind === 'beetle'
+            ? dark
+            : e.kind === 'lakitu'
+              ? gold
+              : red;
+      if (e.kind === 'blooper') {
+        ball(0, 0.55, 0, 0.42, 0.55, 0.35, white, g);
+        for (let i = 0; i < 4; i++)
+          ball(-0.27 + i * 0.18, 0.08, 0.04, 0.08, 0.24, 0.1, white, g);
+      } else if (e.kind === 'piranha') {
+        cube(0, 0.2, 0, 0.12, 0.8, 0.12, green, g);
+        ball(0, 0.65, 0, 0.5, 0.35, 0.4, red, g);
+        cube(0, 0.65, 0.38, 0.8, 0.09, 0.05, cream, g);
+        for (const side of [-1, 1])
+          ball(side * 0.2, 0.85, 0.2, 0.1, 0.05, 0.1, cream, g);
+      } else if (e.kind === 'lakitu') {
+        ball(0, 0.1, 0, 0.8, 0.35, 0.48, white, g);
+        ball(0, 0.65, 0, 0.3, 0.5, 0.28, gold, g);
+      } else {
+        ball(0, 0.45, 0, 0.55, 0.42, 0.42, color, g);
+        if (e.kind === 'cheep') {
+          ball(-0.52, 0.4, 0, 0.18, 0.3, 0.1, cream, g);
+          ball(0.52, 0.4, 0, 0.18, 0.3, 0.1, cream, g);
+        }
+        if (e.kind === 'spiny')
+          for (const side of [-1, 0, 1]) {
+            const spike = new THREE.Mesh(
+              new THREE.ConeGeometry(0.12, 0.35, 6),
+              cream,
+            );
+            spike.position.set(side * 0.24, 0.91, 0);
+            g.add(spike);
+          }
+      }
+      if (e.kind !== 'podoboo')
+        for (const side of [-1, 1]) {
+          ball(side * 0.15, 0.6, 0.35, 0.12, 0.14, 0.07, white, g);
+          ball(side * 0.15, 0.6, 0.42, 0.045, 0.07, 0.025, dark, g);
+        }
     } else {
       ball(0, 0.57, -0.05, 0.56, 0.55, 0.5, green, g);
       ball(0, 0.51, 0.18, 0.4, 0.42, 0.3, cream, g);
@@ -498,11 +685,18 @@ export function makeWorld(
         ball(s * 0.12, 1.17, 0.55, 0.036, 0.07, 0.025, dark, g);
       }
     }
+
     enemies.push({
       ...e,
       mesh: g,
-      home: e.x,
-      direction: 1,
+      home: e.axis === 'z' ? e.z : e.x,
+      homeX: e.x,
+      homeY: e.y,
+      homeZ: e.z,
+      cooldown: 1.4,
+      activated: false,
+      vy: 0,
+      direction: enemies.length % 2 ? -1 : 1,
       alive: true,
       stompTime: 0,
       shell: false,
@@ -518,35 +712,68 @@ export function makeWorld(
   for (const f of level.firebars) {
     const g = new THREE.Group();
     g.position.set(f.x, f.y, f.z);
-    root.add(g);
+    add(g);
     ball(f.x, f.y - 0.2, f.z, 0.35, 0.4, 0.35, stone);
-    for (let r = 0.6; r <= f.length; r += 0.55)
-      ball(r, 0, 0, 0.26, 0.26, 0.26, flame, g);
+    const positions: THREE.Matrix4[] = [];
+    for (let r = 0.4; r <= f.length; r += 0.45)
+      positions.push(
+        new THREE.Matrix4().compose(
+          f.plane === 'horizontal'
+            ? new THREE.Vector3(r, 0, 0)
+            : new THREE.Vector3(0, 0, r),
+          new THREE.Quaternion(),
+          new THREE.Vector3(0.23, 0.23, 0.23),
+        ),
+      );
+    const flames = new THREE.InstancedMesh(sphereGeo, flame, positions.length);
+    positions.forEach((matrix, i) => flames.setMatrixAt(i, matrix));
+    flames.castShadow = true;
+    g.add(flames);
     firebars.push({ ...f, mesh: g, angle: 0 });
   }
-  if (level.theme === 'lava' || level.theme === 'castle') {
+  for (const water of level.lava) {
+    const wet = level.areas[water.area].underwater;
     cube(
-      0,
-      -3,
-      level.goal.z / 2,
-      180,
-      0.5,
-      Math.abs(level.goal.z) + 120,
-      flame,
+      water.x,
+      water.y + water.h / 2 - 0.05,
+      water.z,
+      water.w,
+      0.1,
+      water.d,
+      wet ? mat('#29a6ce') : flame,
     );
-    for (let i = 0; i < Math.ceil(Math.abs(level.goal.z) / 4); i++)
-      cube(
-        (i % 2 ? 1 : -1) * (10 + (i % 5) * 7),
-        -2.73,
-        14 - i * 4,
-        4,
-        0.04,
-        1.5,
-        stripe,
-      );
   }
+  for (const area of level.areas)
+    if (area.underwater) {
+      const water = new THREE.MeshStandardMaterial({
+        color: '#329fd0',
+        transparent: true,
+        opacity: 0.17,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      cube(
+        area.center,
+        9.5,
+        13 - area.length / 2,
+        area.width ?? COURSE_WIDTH,
+        0.03,
+        area.length,
+        water,
+      );
+      for (let i = 0; i < 18; i++)
+        ball(
+          area.center + ((i % 3) - 1) * 0.7,
+          1 + (i % 7),
+          10 - (i * area.length) / 18,
+          0.05,
+          0.05,
+          0.05,
+          cream,
+        );
+    }
   // Distant scenery stays beyond jump range and never creates a hidden bypass.
-  if (['meadow', 'sky', 'night'].includes(level.theme)) {
+  if (level.areas.some((a) => ['meadow', 'sky', 'night'].includes(a.theme))) {
     for (let i = 0; i < Math.ceil(Math.abs(level.goal.z) / 11); i++) {
       const x = (i % 2 ? 1 : -1) * (48 + (i % 3) * 12),
         z = 26 - i * 11,
@@ -556,7 +783,7 @@ export function makeWorld(
     for (let i = 0; i < Math.ceil(Math.abs(level.goal.z) / 20); i++) {
       const g = new THREE.Group();
       g.position.set(Math.sin(i * 4.4) * 55, 18 + (i % 4) * 4, 35 - i * 13);
-      root.add(g);
+      add(g);
       for (let j = 0; j < 4; j++)
         ball(j * 1.8, Math.sin(j * 2) * 0.4, 0, 2.1, 1.4, 1.1, white, g);
       clouds.push(g);
@@ -592,25 +819,11 @@ export function makeWorld(
     cube(x, y + 0.8, z, 0.15, 1.6, 0.15, brown, root, true);
     cube(x, y + 1.65, z, 1.6, 1.4, 0.12, material, root, true);
   }
-  sign(-4.5, 0, 5, 'JUMP');
-  for (let act = 1; act < 4; act++)
-    sign(-4.5, 0, 5 - act * 280, `ACT ${act + 1}`);
-  if (level.theme === 'cave')
-    cube(
-      0,
-      12.6,
-      level.goal.z / 2,
-      18,
-      0.6,
-      Math.abs(level.goal.z) + 45,
-      stone,
-      root,
-      true,
-    );
+  sign(-4.5, 0, 7, 'JUMP');
   const cp = level.checkpoint;
   const checkpoint = new THREE.Group();
   checkpoint.position.set(cp.x, cp.y, cp.z);
-  root.add(checkpoint);
+  add(checkpoint);
   cube(-2.5, 1.1, 0, 0.1, 2.2, 0.1, cream, checkpoint);
   cube(-1.95, 1.85, 0, 1, 0.6, 0.05, red, checkpoint);
   // Ground marker identifies the exact, safe respawn location.
@@ -621,11 +834,12 @@ export function makeWorld(
   cpRing.rotation.x = -Math.PI / 2;
   cpRing.position.y = 0.045;
   checkpoint.add(cpRing);
-  const checkpoints = [checkpoint];
+  const checkpoints = level.checkpoints.length ? [checkpoint] : [];
+  checkpoint.visible = level.checkpoints.length > 0;
   for (const other of (level.checkpoints ?? []).slice(1)) {
     const marker = checkpoint.clone(true);
     marker.position.set(other.x, other.y, other.z);
-    root.add(marker);
+    add(marker);
     checkpoints.push(marker);
   }
   const goal = level.goal;
@@ -635,7 +849,8 @@ export function makeWorld(
   );
   pole.position.set(goal.x, goal.y + 5, goal.z);
   pole.castShadow = true;
-  root.add(pole);
+  pole.visible = !level.boss;
+  add(pole);
   ball(goal.x, goal.y + 10.1, goal.z, 0.23, 0.23, 0.23, gold);
   const shape = new THREE.Shape();
   shape.moveTo(0, 0);
@@ -652,29 +867,31 @@ export function makeWorld(
   const flagGroup = new THREE.Group();
   flagGroup.position.set(goal.x + 0.08, goal.y + 9.5, goal.z);
   flagGroup.add(flag);
-  root.add(flagGroup);
+  flagGroup.visible = !level.boss;
+  add(flagGroup);
   ball(0.5, -0.5, 0.03, 0.24, 0.24, 0.03, white, flagGroup);
   cube(goal.x, goal.y + 0.2, goal.z, 1, 0.4, 1, brick, root, true);
-  // The castle is beyond the flag and uses the same visible and collision bounds.
-  cube(0, goal.y + 2.2, goal.z - 7, 5, 4.4, 2.5, cream, root, true);
-  cube(0, goal.y + 0.9, goal.z - 5.73, 1.15, 1.8, 0.03, dark);
-  for (const x of [-2.8, 2.8]) {
-    cube(x, goal.y + 2.6, goal.z - 7, 1.6, 5.2, 2, cream, root, true);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.4, 2, 4), red);
-    roof.rotation.y = Math.PI / 4;
-    roof.position.set(x, goal.y + 6.2, goal.z - 7);
-    root.add(roof);
+  if (!level.boss) {
+    // The castle is beyond the flag and uses the same visible and collision bounds.
+    cube(goal.x, goal.y + 2.2, goal.z - 7, 5, 4.4, 2.5, cream, root, true);
+    cube(goal.x, goal.y + 0.9, goal.z - 5.73, 1.15, 1.8, 0.03, dark);
+    for (const x of [goal.x - 2.8, goal.x + 2.8]) {
+      cube(x, goal.y + 2.6, goal.z - 7, 1.6, 5.2, 2, cream, root, true);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(1.4, 2, 4), red);
+      roof.rotation.y = Math.PI / 4;
+      roof.position.set(x, goal.y + 6.2, goal.z - 7);
+      add(roof);
+    }
+    for (let i = 0; i < 5; i++)
+      cube(goal.x - 2 + i, goal.y + 4.7, goal.z - 7, 0.55, 0.7, 2.5, cream);
   }
-  for (let i = 0; i < 5; i++)
-    cube(-2 + i, goal.y + 4.7, goal.z - 7, 0.55, 0.7, 2.5, cream);
-  let boss: Boss | undefined,
-    gate: THREE.Mesh | undefined,
-    gateBox: Box | undefined;
+  let axe: THREE.Group | undefined;
+  let boss: Boss | undefined;
   if (level.boss) {
     const b = level.boss,
       g = new THREE.Group();
     g.position.set(b.x, b.y, b.z);
-    root.add(g);
+    add(g);
     ball(0, 1.05, -0.18, 1.15, 1.12, 0.8, green, g);
     ball(0, 0.95, 0.35, 0.84, 0.92, 0.65, gold, g);
     ball(0, 1.94, 0.55, 0.65, 0.64, 0.6, gold, g);
@@ -704,20 +921,131 @@ export function makeWorld(
       ...b,
       mesh: g,
       home: b.x,
-      health: 3,
+      health: 5,
       cooldown: 1.5,
       hurt: 0,
       alive: true,
     };
-    gate = cube(0, 6, goal.z + 4, 12, 12, 0.5, red);
-    gateBox = { x: 0, y: 6, z: goal.z + 4, w: 12, h: 12, d: 0.5, kind: 'gate' };
-    boxes.push(gateBox);
+    if (level.axe) {
+      axe = new THREE.Group();
+      axe.position.set(level.axe.x, level.axe.y, level.axe.z);
+      add(axe, level.goalArea);
+      cube(0, 0, 0, 0.1, 1.1, 0.1, brown, axe);
+      ball(0.2, 0.4, 0, 0.4, 0.3, 0.09, gold, axe);
+    }
+    // The rescue room is the finish; reaching the axe removes the bridge.
+    const npc = new THREE.Group();
+    npc.position.set(goal.x, goal.y, goal.z - 1.8);
+    add(npc, level.goalArea);
+    ball(
+      0,
+      0.55,
+      0,
+      0.25,
+      0.5,
+      0.25,
+      level.world === 7 ? mat('#f69ac6') : cream,
+      npc,
+    );
+    ball(0, 1.05, 0, 0.25, 0.24, 0.25, cream, npc);
+    ball(0, 1.3, 0, 0.45, 0.2, 0.4, level.world === 7 ? gold : red, npc);
   }
+  function showPower(index: number, kind: Power) {
+    const p = pickups[index];
+    if (!p) return;
+    if (p.kind !== kind) {
+      p.mesh.visible = false;
+      pickup(p.x, p.y, p.z, kind);
+      const replacement = pickups.pop()!;
+      p.mesh = replacement.mesh;
+    }
+    p.kind = kind;
+    p.mesh.visible = true;
+    p.active = true;
+  }
+  // Static terrain shares draw calls. Mutable bricks retain an instance handle.
+  const handles = new Map<
+    THREE.Object3D,
+    { mesh: THREE.InstancedMesh; index: number }[]
+  >();
+  for (const [area, group] of areaGroups.entries()) {
+    const batches = new Map<
+      string,
+      {
+        geometry: THREE.BufferGeometry;
+        material: THREE.Material;
+        entries: { matrix: THREE.Matrix4; source: THREE.Object3D }[];
+      }
+    >();
+    for (const item of staticGroups.filter((s) => s.area === area)) {
+      item.mesh.updateWorldMatrix(true, true);
+      const parts: THREE.Mesh[] = [];
+      item.mesh.traverse((o) => {
+        if (
+          o instanceof THREE.Mesh &&
+          !(o instanceof THREE.InstancedMesh) &&
+          !Array.isArray(o.material)
+        )
+          parts.push(o);
+      });
+      for (const part of parts) {
+        const material = part.material as THREE.Material,
+          key = `${part.geometry.uuid}:${material.uuid}`;
+        if (!batches.has(key))
+          batches.set(key, { geometry: part.geometry, material, entries: [] });
+        batches.get(key)!.entries.push({
+          matrix: part.matrixWorld.clone(),
+          source: item.mesh,
+        });
+        part.removeFromParent();
+      }
+    }
+    for (const batch of batches.values()) {
+      const mesh = new THREE.InstancedMesh(
+        batch.geometry,
+        batch.material,
+        batch.entries.length,
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      batch.entries.forEach((entry, index) => {
+        mesh.setMatrixAt(index, entry.matrix);
+        if (!handles.has(entry.source)) handles.set(entry.source, []);
+        handles.get(entry.source)!.push({ mesh, index });
+      });
+      group.add(mesh);
+    }
+  }
+  for (const item of [...bricks, ...bridges])
+    item.hide = () => {
+      item.mesh.visible = false;
+      for (const handle of handles.get(item.mesh) ?? []) {
+        handle.mesh.setMatrixAt(
+          handle.index,
+          new THREE.Matrix4().makeScale(0, 0, 0),
+        );
+        handle.mesh.instanceMatrix.needsUpdate = true;
+      }
+    };
+  function setArea(id: number) {
+    areaGroups.forEach((g, i) => (g.visible = i === id));
+    decorations.visible = ['meadow', 'sky', 'night'].includes(
+      level.areas[id].theme,
+    );
+  }
+  setArea(level.startArea);
+  for (const material of allMaterials) {
+    if (material instanceof THREE.MeshStandardMaterial && material.emissiveIntensity <= 1 && material !== cloud)
+      shadeSurface(material, material === grass || material === edge);
+  }
+
+
   function dispose() {
     root.removeFromParent();
     const geometries = new Set<THREE.BufferGeometry>(),
       textures = new Set<THREE.Texture>();
     root.traverse((o) => {
+      if (o instanceof THREE.InstancedMesh) o.dispose();
       if (o instanceof THREE.Mesh) {
         geometries.add(o.geometry);
         for (const m of Array.isArray(o.material) ? o.material : [o.material])
@@ -751,8 +1079,13 @@ export function makeWorld(
     checkpoint,
     checkpoints,
     decorations,
-    gate,
-    gateBox,
     dispose,
+    setArea,
+    bricks,
+    bridges,
+    springs,
+    axe,
+    vines,
+    showPower,
   };
 }

@@ -9,11 +9,11 @@ export type RecordEntry = {
   cleanMedal: boolean;
 };
 export type ProgressSave = {
-  version: 2;
+  version: 3;
   unlocked: number;
   records: RecordEntry[];
 };
-const KEY = 'mario-first-person.campaign.v2';
+const KEY = 'mario-first-person.nes.v1';
 const emptyRecord = (): RecordEntry => ({
   cleared: false,
   stars: 0,
@@ -24,14 +24,14 @@ const emptyRecord = (): RecordEntry => ({
   cleanMedal: false,
 });
 export const freshProgress = (): ProgressSave => ({
-  version: 2,
+  version: 3,
   unlocked: 0,
   records: LEVELS.map(emptyRecord),
 });
 export function readProgress(): ProgressSave {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (raw?.version !== 2 || !Array.isArray(raw.records))
+    if (raw?.version !== 3 || !Array.isArray(raw.records))
       return freshProgress();
     const save = freshProgress();
     save.records = save.records.map((_, i) => {

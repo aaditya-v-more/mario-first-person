@@ -3,7 +3,7 @@
   "runtime": "plethora-bit@2",
   "entry": "main.js",
   "title": "Mario - First Person",
-  "description": "A first-person Mario adventure with 24 courses across six worlds, 72 star coins, power-ups, moving platforms, checkpoints, and boss encounters. Play with touch controls or a keyboard, and save your course unlocks and medals.",
+  "description": "Play all 32 original NES Mario courses in first person, with bonus rooms, swimming, moving platforms, castle mazes, and sequential level unlocks.",
   "tags": [
     "game",
     "3d",

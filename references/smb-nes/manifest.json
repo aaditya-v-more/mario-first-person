@@ -1,0 +1,267 @@
+{
+  "game": "Super Mario Bros. (NES, 1985)",
+  "layoutSource": "https://github.com/jaggedsoft/FullScreenMario",
+  "gitTree": "bfca69940aa999e607772f943015ad5f2faf7b7d",
+  "sourceBlob": "6642a4d9cc6ec864a7bfd72937435e5f9a896e9c",
+  "layoutSha256": "9f0ef88b44b93de08a8aaa0d9ccf404bd5059a5b81db1939cde1876a11bac6e9",
+  "mapIndex": "https://themushroomkingdom.net/maps/smb",
+  "maps": [
+    {
+      "level": "1-1",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/1-1",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_1-1.png",
+      "imageSha256": "1d4fb52029887617a2481d7963117cccbccd1d33fd694e437e66f8364e03b229",
+      "areas": 2,
+      "locations": 3
+    },
+    {
+      "level": "1-2",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/1-2",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_1-2.png",
+      "imageSha256": "07dd7297622a3b8c732e08754fad333abf9e0517ecd422b782708a2efcbe4687",
+      "areas": 4,
+      "locations": 6
+    },
+    {
+      "level": "1-3",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/1-3",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_1-3.png",
+      "imageSha256": "33bbd679018ccd66bdc5f2554eba2e6d1b59ad08deb45d0b380af99fc45a5e4e",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "1-4",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/1-4",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_1-4.png",
+      "imageSha256": "212c6d6623bb8d82595b7aff61f5017f6dbe5d47939e5c8aa58d20747070da2b",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "2-1",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/2-1",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_2-1.png",
+      "imageSha256": "9aa5ea51444cbb371b38d370686654b6823b6ec22b8028a0d1ca2ce8a7a52fa4",
+      "areas": 3,
+      "locations": 5
+    },
+    {
+      "level": "2-2",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/2-2",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_2-2.png",
+      "imageSha256": "50418b21b3beab5786603ff3fe1d33ed1f8ce886f04f8d7dacdffe456b6492cb",
+      "areas": 3,
+      "locations": 3
+    },
+    {
+      "level": "2-3",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/2-3",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_2-3.png",
+      "imageSha256": "8e19ab6dbb3e9c4680e0819a8d8fffc63ad16608b7530f965d6dfb058b109acf",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "2-4",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/2-4",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_2-4.png",
+      "imageSha256": "5f7cb57166f6b27e62c4e277442e8ec25ef4e9b7ef1d4ad9082f65f412857938",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "3-1",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/3-1",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_3-1.png",
+      "imageSha256": "69146a222b20419bd7f7d18d8ecdbc3c0b54fda3a76273310677b6842fb098a5",
+      "areas": 3,
+      "locations": 5
+    },
+    {
+      "level": "3-2",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/3-2",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_3-2.png",
+      "imageSha256": "0df149586c103f7a292c8a015fd13d859e5f19594ee5c51951ffc5a9833f2b26",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "3-3",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/3-3",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_3-3.png",
+      "imageSha256": "fc1af99c48cda5660c66fe6282a3bd47e3a1d290c0c28a27d346092eda8e9643",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "3-4",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/3-4",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_3-4.png",
+      "imageSha256": "ae70a00d2097b91b3f50f9a823dfa84a4cd150a8a2a36132fae4be39395f1859",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "4-1",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/4-1",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_4-1.png",
+      "imageSha256": "857a7d5b15bbb282f0e27ea9885d00e2de008978c5b91a012302faf37be8f1b3",
+      "areas": 2,
+      "locations": 3
+    },
+    {
+      "level": "4-2",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/4-2",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_4-2.png",
+      "imageSha256": "9e36fab66f39426ae20b9e5f089d6e4f781c6e9fd32e8c26428671dc684ffdef",
+      "areas": 5,
+      "locations": 6
+    },
+    {
+      "level": "4-3",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/4-3",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_4-3.png",
+      "imageSha256": "d92f9d2f1d653d5b1d7fff864dc301ceceabded6dc207431850680d3f8e428a7",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "4-4",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/4-4",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_4-4.png",
+      "imageSha256": "48013c6a3988d3540933b3a7f01c0b15a404d11257b21b031bc895f741c9c2a8",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "5-1",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/5-1",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_5-1.png",
+      "imageSha256": "e99767fa49ccfaf5c0e1a92a2a28f28be1c5c6490f98d10c905f8d9b3742b9ae",
+      "areas": 2,
+      "locations": 3
+    },
+    {
+      "level": "5-2",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/5-2",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_5-2.png",
+      "imageSha256": "719ae0f316f32b2fe9b1c2783641d1ed128e90043c84421f1b771b115769796c",
+      "areas": 3,
+      "locations": 5
+    },
+    {
+      "level": "5-3",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/5-3",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_5-3.png",
+      "imageSha256": "243fd3b6ac0db7ea15014377f96f053ef6a8ae649dea67a031f61782763d8eea",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "5-4",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/5-4",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_5-4.png",
+      "imageSha256": "1be89746f2e5b66271a689f5f7383ea28e108541a3daca74305af776a14bc4cf",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "6-1",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/6-1",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_6-1.png",
+      "imageSha256": "6347814b8a0727f2e7919bcfe743d33b368d91cf68b6ff1190251990862a10ab",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "6-2",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/6-2",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_6-2.png",
+      "imageSha256": "3cacdafad0d1fbfa4c6bde942b3215d08996794ed9d151bd3288d8e4533f78b3",
+      "areas": 5,
+      "locations": 9
+    },
+    {
+      "level": "6-3",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/6-3",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_6-3.png",
+      "imageSha256": "fac2eb01ae9acdadc4daa2bd58dc30b89eb2c5f0d52502483c2d9ba0465f8c7f",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "6-4",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/6-4",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_6-4.png",
+      "imageSha256": "6bebfc3afb868dca04d368524f0c313b71088aa9e5e797765a234ae2db991479",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "7-1",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/7-1",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_7-1.png",
+      "imageSha256": "6650bdf3fbdc15784c5bd29c4bc9ce9903fc9d68e59e69af3dfa0b51bac50d18",
+      "areas": 2,
+      "locations": 3
+    },
+    {
+      "level": "7-2",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/7-2",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_7-2.png",
+      "imageSha256": "b9a77e2db7873da2065e46d6edfa8aec3df3e130b14a1d8b854859498686588c",
+      "areas": 3,
+      "locations": 3
+    },
+    {
+      "level": "7-3",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/7-3",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_7-3.png",
+      "imageSha256": "4bd791286856876fb1679f2ad7f031620212408e9f2a75ad636d2e30cb37910e",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "7-4",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/7-4",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_7-4.png",
+      "imageSha256": "cdf0dc9cd955f607be949e4150c07f95ff86b91ce667e6bf6658871d614a0cf5",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "8-1",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/8-1",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_8-1.png",
+      "imageSha256": "983f84c017fe34f97c452d4d41cb059e9e396ab5cfa7aef668cd33312302b1a5",
+      "areas": 2,
+      "locations": 3
+    },
+    {
+      "level": "8-2",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/8-2",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_8-2.png",
+      "imageSha256": "79ba50886fe142cdfba70ad7f79945e76063d8807f5d25fdd761a861526d3c0c",
+      "areas": 2,
+      "locations": 3
+    },
+    {
+      "level": "8-3",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/8-3",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_8-3.png",
+      "imageSha256": "292774f310d5907e067273f97e21ff26126193dc4fa17c2f41c411e40265c905",
+      "areas": 1,
+      "locations": 1
+    },
+    {
+      "level": "8-4",
+      "referencePage": "https://themushroomkingdom.net/maps/smb/8-4",
+      "imageUrl": "https://themushroomkingdom.net/images/maps/smb/smb_8-4.png",
+      "imageSha256": "e8b7beacce8574eb4713005e9ded84d7a7311de2f1cc8690e85dde29fa0c4e96",
+      "areas": 5,
+      "locations": 6
+    }
+  ],
+  "sourceCommit": "1dfe618bfa966dcad6b91e91aa67649bb869b442"
+}

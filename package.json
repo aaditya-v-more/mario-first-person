@@ -19,7 +19,10 @@
     "build:vercel": "npm run export:html && node scripts/build-vercel.mjs",
     "build:plethora": "node scripts/build-plethora.mjs",
     "test:plethora": "npm run build:plethora && node --test tests/plethora.test.mjs",
-    "test:campaign": "npm run export:html && node --test tests/campaign.browser.mjs"
+    "test:campaign": "npm run export:html && node --test tests/campaign.browser.mjs",
+    "collect:maps": "node scripts/collect-smb-reference.mjs",
+    "import:maps": "node scripts/import-smb-reference.mjs",
+    "test:pointer": "npm run export:html && node --test tests/pointer.browser.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

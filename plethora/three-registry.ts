@@ -19,6 +19,7 @@ export let MathUtils: typeof THREE.MathUtils;
 export let Matrix4: typeof THREE.Matrix4;
 export let Mesh: typeof THREE.Mesh;
 export let MeshBasicMaterial: typeof THREE.MeshBasicMaterial;
+export let MeshPhysicalMaterial: typeof THREE.MeshPhysicalMaterial;
 export let MeshStandardMaterial: typeof THREE.MeshStandardMaterial;
 export let Object3D: typeof THREE.Object3D;
 export let PCFSoftShadowMap: typeof THREE.PCFSoftShadowMap;
@@ -56,6 +57,7 @@ export function setThree(module: unknown) {
     Matrix4,
     Mesh,
     MeshBasicMaterial,
+    MeshPhysicalMaterial,
     MeshStandardMaterial,
     Object3D,
     PCFSoftShadowMap,

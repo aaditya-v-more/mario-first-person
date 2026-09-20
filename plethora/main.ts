@@ -57,10 +57,10 @@ export async function init(ctx: BitContext) {
     <header><b>MARIO <small>FIRST PERSON</small></b><div><button data-action="sound" aria-label="Toggle sound">Sound on</button><button data-action="pause" hidden>Pause</button><button data-action="help">?</button></div></header>
     <div class="hud" hidden><span data-stat="coins"></span><span data-stat="lives"></span><span data-stat="time"></span><span data-stat="score"></span></div>
     <div class="progress" hidden><i></i></div><div class="crosshair" hidden>+</div>
-    <section class="panel"><small>WORLD 1–1</small><h1>MARIO<span>FIRST PERSON</span></h1><p class="description">Collect coins, stomp Goombas, and reach the flag. 24 courses across six worlds. Find 72 star coins and defeat Bowser.</p><button class="primary" data-action="play" disabled>Loading world…</button><button data-action="restart" hidden>Restart course</button></section>
+    <section class="panel"><small>WORLD 1–1</small><h1>MARIO<span>FIRST PERSON</span></h1><p class="description">Collect coins, stomp Goombas, and reach the flag. 32 original NES courses across eight worlds. Clear each course to unlock the next.</p><button class="primary" data-action="play" disabled>Loading world…</button><button data-action="restart" hidden>Restart course</button></section>
     <section class="help" hidden><h2>How to play</h2><ul><li>Move with the left joystick or WASD.</li><li>Drag the world to look. Arrow keys also move and turn.</li><li>Tap Jump or press Space. Hold Run or Shift to sprint.</li><li>Jump onto Goombas and hit ? blocks from below.</li><li>Cross the gaps and reach the flag before time runs out.</li></ul><button data-action="close-help">Got it</button></section>
     <div class="notice" role="status"></div>
-    <div class="controls" hidden><div class="joystick" role="group" aria-label="Movement joystick"><i></i><span>MOVE</span></div><div class="actions"><button data-action="run">RUN</button><button data-action="fire" hidden>FIRE</button><button data-action="jump">JUMP ↑</button></div></div>`;
+    <div class="controls" hidden><div class="joystick" role="group" aria-label="Movement joystick"><i></i><span>MOVE</span></div><div class="actions"><button data-action="run">RUN</button><button data-action="fire" hidden>FIRE</button><button data-action="enter" hidden>ENTER</button><button data-action="crouch" hidden>DUCK</button><button data-action="jump">JUMP ↑</button></div></div>`;
   const el = <T extends HTMLElement = HTMLElement>(selector: string) =>
     root.querySelector<T>(selector)!;
   const listen = (target: EventTarget, name: string, handler: unknown) =>
@@ -152,6 +152,9 @@ export async function init(ctx: BitContext) {
     el('.progress i').style.width = `${Math.round(s.progress * 100)}%`;
     el('.notice').textContent = s.notice;
     button('fire').hidden = s.power !== 'fire';
+    button('enter').hidden = !s.interaction;
+    button('crouch').hidden = s.power === 'small';
+    button('jump').textContent = s.underwater ? 'SWIM ↑' : 'JUMP ↑';
     el('.panel > small').textContent = `WORLD ${s.worldId} · ${s.levelName}`;
     if (s.score !== previousScore) {
       previousScore = s.score;
@@ -232,6 +235,17 @@ export async function init(ctx: BitContext) {
     button('sound').textContent = muted ? 'Sound off' : 'Sound on';
     if (!muted && status === 'playing') void audio.activate();
   });
+  listen(button('enter'), 'pointerdown', (event: PointerEvent) => {
+    event.preventDefault();
+    game?.interact();
+  });
+  listen(button('crouch'), 'pointerdown', (event: PointerEvent) => {
+    event.preventDefault();
+    button('crouch').setPointerCapture(event.pointerId);
+    game?.keys.add('KeyC');
+  });
+  for (const name of ['pointerup', 'pointercancel', 'lostpointercapture'])
+    listen(button('crouch'), name, () => game?.keys.delete('KeyC'));
   listen(button('fire'), 'pointerdown', (event: PointerEvent) => {
     event.preventDefault();
     game?.shoot();

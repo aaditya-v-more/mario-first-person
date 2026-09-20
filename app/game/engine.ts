@@ -1,3 +1,4 @@
+import { moveGroundEnemy } from './enemy-motion';
 import * as THREE from 'three';
 import { makeWorld, type World, type Enemy } from './world';
 import {
@@ -6,12 +7,15 @@ import {
   overlapXZ,
   JUMP_SPEED,
   HEIGHT,
+  SMALL_HEIGHT,
+  playerHeight,
   RADIUS,
   type Box,
+  type Player,
 } from './physics';
-import { LEVELS, PALETTES } from './levels';
+import { LEVELS, PALETTES, AREA_SPACING } from './levels';
+import type { Portal, Point } from './level-types';
 import {
-  countStars,
   readProgress,
   saveProgress,
   type ProgressSave,
@@ -47,6 +51,10 @@ export type Snapshot = {
   unlocked: number;
   records: RecordEntry[];
   campaignCoins: number;
+  area: number;
+  areaName: string;
+  underwater: boolean;
+  interaction: string;
 };
 export const initialSnapshot = (): Snapshot => ({
   status: 'ready',
@@ -68,6 +76,10 @@ export const initialSnapshot = (): Snapshot => ({
   unlocked: 0,
   records: [],
   campaignCoins: 0,
+  area: 0,
+  areaName: 'Overworld',
+  underwater: false,
+  interaction: '',
 });
 type Particle = { mesh: THREE.Mesh; velocity: THREE.Vector3; life: number };
 type Projectile = {
@@ -77,6 +89,7 @@ type Projectile = {
   vz: number;
   life: number;
   hostile: boolean;
+  kind: 'fire' | 'hammer' | 'bullet';
 };
 export class GameEngine {
   renderer: THREE.WebGLRenderer;
@@ -88,7 +101,7 @@ export class GameEngine {
   rtx: RtxGraphics | null = null;
   private graphicsRequest = 0;
   private rtxWanted = false;
-  player = newPlayer();
+  player: Player = { ...newPlayer(), ...LEVELS[0].spawn, height: HEIGHT };
   audio: GameRuntime['audio'];
   state: Snapshot = initialSnapshot();
   save: ProgressSave = readProgress();
@@ -110,6 +123,9 @@ export class GameEngine {
   noticeTimer = 0;
   checkpoint = false;
   pointerLocked = false;
+  pointerCapture: Promise<boolean> = Promise.resolve(false);
+  private finishCapture?: (active: boolean) => void;
+  private captureTimer?: ReturnType<typeof setTimeout>;
   shootCooldown = 0;
   starTime = 0;
   levelStartScore = 0;
@@ -117,6 +133,12 @@ export class GameEngine {
   checkpointIndex = -1;
   damageCount = 0;
   courseTime = 0;
+  area = 0;
+  jumpHeld = false;
+  portalCooldown = 0;
+  mazePassed = new Set<string>();
+  cannonClocks: number[] = [];
+  bridgeDown = false;
   particles: Particle[] = [];
   projectiles: Projectile[] = [];
   spentBlockMaterial = new THREE.MeshStandardMaterial({
@@ -158,7 +180,7 @@ export class GameEngine {
       'Game view. WASD to move, mouse or arrow keys to look, Space to jump, Shift to run, F to throw fireballs.',
     );
     if (!runtime.canvas) container.appendChild(this.renderer.domElement);
-    this.hemisphere = new THREE.HemisphereLight('#e8faff', '#658342', 2.7);
+    this.hemisphere = new THREE.HemisphereLight('#e8faff', '#658342', 1.85);
     this.scene.add(this.hemisphere);
     this.sun = new THREE.DirectionalLight('#fff2cc', 3.1);
     this.sun.position.set(-20, 35, 18);
@@ -192,8 +214,10 @@ export class GameEngine {
     this.runtime.startFrames(this.loop);
   }
   applyTheme() {
-    this.audio.setTheme?.(this.world.level.theme);
-    const c = PALETTES[this.world.level.theme];
+    const active = this.world.level.areas[this.area];
+    this.audio.setTheme?.(active.theme);
+    const c = PALETTES[active.theme];
+    this.world.setArea(this.area);
     this.scene.background = new THREE.Color(c.sky);
     this.scene.fog = new THREE.Fog(c.fog, 40, 165);
     this.renderer.setClearColor(c.sky);
@@ -206,7 +230,9 @@ export class GameEngine {
     Object.assign(this.state, {
       total:
         this.world.coins.filter((c) => c.star === undefined).length +
-        this.world.questions.filter((q) => q.reward === 'coin').length,
+        this.world.questions
+          .filter((q) => q.reward === 'coin')
+          .reduce((n, q) => n + q.remaining, 0),
       levelName: l.name,
       worldId: l.id,
       unlocked: this.save.unlocked,
@@ -259,6 +285,7 @@ export class GameEngine {
     listen(document, 'keyup', this.keyUp);
     listen(document, 'mousemove', this.mouseMove);
     listen(document, 'pointerlockchange', this.lockChange);
+    listen(document, 'pointerlockerror', this.pointerError);
     listen(window, 'blur', this.onBlur);
     listen(document, 'visibilitychange', this.onVisibility);
     const c = this.renderer.domElement;
@@ -312,17 +339,98 @@ export class GameEngine {
     }
   }
   emit() {
-    const l = this.world.level;
+    const l = this.world.level,
+      area = l.areas[this.area];
     this.state.time = Math.ceil(this.remaining);
-    this.state.progress = THREE.MathUtils.clamp(
-      (l.spawn.z - this.player.z) / (l.spawn.z - l.goal.z),
-      0,
-      1,
-    );
+    if (this.area === l.mainArea)
+      this.state.progress = Math.max(
+        this.state.progress,
+        THREE.MathUtils.clamp((13 - this.player.z) / area.length, 0, 0.98),
+      );
+    if (this.area === l.goalArea && this.area !== l.mainArea)
+      this.state.progress = Math.max(this.state.progress, 0.92);
     this.state.checkpoint = this.checkpoint;
     this.state.starTime = Math.ceil(this.starTime);
     this.state.bossHealth = this.world.boss?.health ?? null;
+    this.state.area = this.area;
+    this.state.areaName = area.name;
+    this.state.underwater = area.underwater;
+    this.state.interaction = this.nearPortal()?.label ?? '';
     this.onChange({ ...this.state });
+  }
+  nearPortal(): Portal | undefined {
+    if (this.portalCooldown > 0) return;
+    return this.world.level.portals.find(
+      (portal) =>
+        portal.area === this.area &&
+        (!portal.requiresBlock ||
+          this.world.vines.get(portal.requiresBlock)?.visible) &&
+        Math.hypot(this.player.x - portal.x, this.player.z - portal.z) <
+          portal.radius &&
+        Math.abs(this.player.y - portal.y) <
+          (portal.mode === 'vine' ? 3 : portal.mode === 'walk' ? 2.2 : 1.15),
+    );
+  }
+  enterArea(id: number, position: Point) {
+    const enhance = this.rtxWanted;
+    this.graphicsRequest++;
+    this.rtx?.dispose();
+    this.rtx = null;
+    this.area = id;
+    this.player = {
+      ...newPlayer(),
+      ...position,
+      height: HEIGHT,
+    };
+    this.yaw = 0;
+    this.pitch = 0;
+    this.clearInput();
+    this.clearProjectiles();
+    this.portalCooldown = 1;
+    this.coyote = 0;
+    this.invulnerable = Math.max(1.5, this.invulnerable);
+    this.applyTheme();
+    this.emit();
+    if (enhance) void this.setRtx(true);
+  }
+  interact() {
+    if (this.state.status !== 'playing') return;
+    const portal = this.nearPortal();
+    if (!portal) return;
+    if (portal.warpLevel !== undefined) {
+      if (portal.warpLevel < 0 || portal.warpLevel > this.save.unlocked) {
+        this.notify(
+          'That world is locked. Clear each course in order to unlock it.',
+          3,
+        );
+        return;
+      }
+      this.selectLevel(portal.warpLevel, false);
+      return;
+    }
+    this.enterArea(portal.targetArea, portal.target);
+    this.audio.tone(220, 0.3, 'triangle', 0.07);
+    this.notify(
+      this.world.level.areas[this.area].underwater
+        ? 'Underwater! Hold Jump to swim up.'
+        : portal.mode === 'vine'
+          ? 'Above the clouds! Follow the bonus route.'
+          : 'Through the pipe!',
+      2,
+    );
+  }
+  updateHeight() {
+    const p = this.player,
+      desired = this.keys.has('KeyC') ? SMALL_HEIGHT : HEIGHT;
+    const blocked = this.world.boxes.some(
+      (b) =>
+        b.active !== false &&
+        !b.hidden &&
+        overlapXZ(p, b) &&
+        b.y - b.h / 2 > p.y + 0.1 &&
+        b.y - b.h / 2 < p.y + desired - 0.01,
+    );
+    p.height = blocked ? SMALL_HEIGHT : desired;
   }
   notify(text: string, duration = 2.5) {
     this.state.notice = text;
@@ -331,6 +439,7 @@ export class GameEngine {
   }
   clearInput() {
     this.keys.clear();
+    this.jumpHeld = false;
     this.touch = { x: 0, y: 0 };
     this.jumpBuffer = 0;
     this.drag = null;
@@ -350,22 +459,68 @@ export class GameEngine {
     void this.audio.activate();
     this.emit();
     if (first) this.notify(this.world.level.hint, 6);
-    if (requestLock && !window.matchMedia('(pointer: coarse)').matches) {
-      try {
-        const lock = this.renderer.domElement.requestPointerLock?.();
-        if (lock && typeof lock.catch === 'function')
-          void lock.catch(() => {
-            if (this.state.status === 'playing')
-              this.notify('Drag to look, or use ← → to turn.', 4);
-          });
-      } catch {
-        this.notify('Drag to look, or use ← → to turn.', 4);
-      }
-    }
+    if (requestLock) void this.captureMouse();
   }
+  captureMouse(): Promise<boolean> {
+    if (this.state.status !== 'playing') return Promise.resolve(false);
+    if (document.pointerLockElement === this.renderer.domElement)
+      return Promise.resolve(true);
+    if (this.finishCapture) return this.pointerCapture;
+    let finish!: (active: boolean) => void;
+    this.pointerCapture = new Promise<boolean>((resolve) => {
+      finish = (active) => {
+        if (this.captureTimer !== undefined) clearTimeout(this.captureTimer);
+        this.captureTimer = undefined;
+        this.finishCapture = undefined;
+        if (active && this.state.status !== 'playing') {
+          this.releasePointer();
+          active = false;
+        }
+        resolve(active);
+        if (!active && this.running && this.state.status === 'playing')
+          this.notify(
+            'Click the game to capture the mouse. Escape releases it.',
+            4,
+          );
+      };
+    });
+    this.finishCapture = finish;
+    try {
+      if (typeof this.renderer.domElement.requestPointerLock !== 'function') {
+        finish(false);
+        return this.pointerCapture;
+      }
+      // Focus the game surface within the same user gesture as native capture.
+      this.renderer.domElement.tabIndex = 0;
+      this.renderer.domElement.focus?.({ preventScroll: true });
+      // Keep this native request synchronous with Start/Resume, before fullscreen.
+      const result = this.renderer.domElement.requestPointerLock();
+      if (this.finishCapture === finish) this.captureTimer = setTimeout(() => {
+        if (this.finishCapture === finish)
+          finish(document.pointerLockElement === this.renderer.domElement);
+      }, 2500);
+      if (result && typeof result.then === 'function')
+        void result
+          .then(() => {
+            if (this.finishCapture === finish)
+              finish(document.pointerLockElement === this.renderer.domElement);
+          })
+          .catch(() => {
+            if (this.finishCapture === finish) finish(false);
+          });
+    } catch {
+      finish(false);
+    }
+    return this.pointerCapture;
+  }
+  pointerError = () => {
+    this.finishCapture?.(false);
+  };
+
   pause() {
     if (this.state.status !== 'playing') return;
     this.state.status = 'paused';
+    this.renderer.domElement.blur?.();
     this.clearInput();
     this.accumulator = 0;
     this.releasePointer();
@@ -384,11 +539,20 @@ export class GameEngine {
       () => this.runtime.createTextureCanvas(),
       LEVELS[index],
     );
+    this.area = this.world.level.startArea;
+    this.mazePassed.clear();
+    this.portalCooldown = 0;
+    this.bridgeDown = false;
+    this.cannonClocks = this.world.level.cannons.map((_, i) => i * 0.2);
     this.applyTheme();
-    this.player = { ...newPlayer(), ...this.world.level.spawn };
+    this.player = {
+      ...newPlayer(),
+      ...this.world.level.spawn,
+      height: HEIGHT,
+    };
     this.camera?.position.set(
       this.player.x,
-      this.player.y + HEIGHT - 0.12,
+      this.player.y + playerHeight(this.player) - 0.12,
       this.player.z,
     );
     this.sun.position.set(this.player.x - 20, 35, this.player.z + 18);
@@ -465,9 +629,13 @@ export class GameEngine {
     this.audio.muted = muted;
   }
   jump() {
-    if (this.state.status === 'playing') this.jumpBuffer = 0.16;
+    if (this.state.status === 'playing') {
+      this.jumpBuffer = 0.16;
+      this.jumpHeld = true;
+    }
   }
   releaseJump() {
+    this.jumpHeld = false;
     if (this.player.vy > 5) this.player.vy *= 0.52;
   }
   setTouch(x: number, y: number) {
@@ -511,6 +679,10 @@ export class GameEngine {
     this.keys.add(e.code);
     if (e.code === 'Space' && !e.repeat) this.jump();
     if (e.code === 'KeyF' && !e.repeat) this.shoot();
+    if (e.code === 'KeyE' && !e.repeat) {
+      e.preventDefault();
+      this.interact();
+    }
   };
   keyUp = (e: KeyboardEvent) => {
     this.keys.delete(e.code);
@@ -526,6 +698,14 @@ export class GameEngine {
     if (this.pointerLocked && !locked && this.state.status === 'playing')
       this.pause();
     this.pointerLocked = locked;
+    this.renderer.domElement.setAttribute?.(
+      'data-mouse-locked',
+      String(locked),
+    );
+    if (locked) {
+      this.drag = null;
+      this.finishCapture?.(true);
+    }
   };
   pointerDown = (e: PointerEvent) => {
     if (this.state.status !== 'playing') return;
@@ -533,12 +713,13 @@ export class GameEngine {
       this.shoot();
       return;
     }
+    if (e.pointerType !== 'touch') void this.captureMouse();
     if (this.drag) return;
     this.drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
     this.renderer.domElement.setPointerCapture(e.pointerId);
   };
   pointerMove = (e: PointerEvent) => {
-    if (this.drag?.id !== e.pointerId) return;
+    if (this.drag?.id !== e.pointerId || !e.buttons) return;
     this.look((e.clientX - this.drag.x) * 1.6, (e.clientY - this.drag.y) * 1.6);
     this.drag.x = e.clientX;
     this.drag.y = e.clientY;
@@ -558,40 +739,56 @@ export class GameEngine {
     this.notify('Graphics were interrupted. Reload the page to continue.', 999);
   };
   bump(b: Box) {
+    if (b.kind === 'brick') {
+      const brick = this.world.bricks.find((item) => item.box === b);
+      if (brick && this.state.power !== 'small') {
+        b.active = false;
+        brick.mesh.visible = false;
+        brick.hide?.();
+        this.state.score += 50;
+        this.burst(b.x, b.y, b.z, 8);
+        this.audio.stomp();
+      } else this.audio.tone(140, 0.06, 'triangle', 0.05);
+      return;
+    }
     if (b.kind !== 'question' || b.id === undefined) return;
     const q = this.world.questions[b.id];
     if (q.used) return;
     q.used = true;
+    q.mesh.visible = true;
+    q.box.hidden = false;
     q.mesh.material = this.spentBlockMaterial;
     q.bump = 0.34;
     if (q.reward === 'coin') {
+      q.remaining--;
+      q.used = q.remaining <= 0;
+      q.mesh.material = q.used ? this.spentBlockMaterial : q.originalMaterial;
       q.coin.visible = true;
       q.coin.position.set(b.x, b.y + 1.2, b.z);
       this.collect();
+    } else if (q.reward === 'vine') {
+      if (q.portal) this.world.vines.get(q.portal)!.visible = true;
+      this.notify('A hidden vine! Press E near it to climb.', 3);
     } else {
-      const pickup = this.world.pickups[q.powerIndex];
-      pickup.active = true;
-      pickup.mesh.visible = true;
+      const kind =
+        q.reward === 'upgrade'
+          ? this.state.power === 'small'
+            ? 'mushroom'
+            : 'flower'
+          : q.reward;
+      this.world.showPower(q.powerIndex, kind);
       this.audio.tone(660, 0.25, 'triangle', 0.08);
-      this.notify(
-        q.reward === 'flower'
-          ? 'Fire flower! Grab it, then press F or click to throw.'
-          : q.reward === 'star'
-            ? 'Super Star! Grab it for 12 seconds of invincibility.'
-            : 'A Super Mushroom! Grab it for an extra hit.',
-        3,
-      );
     }
   }
   collect() {
-    const before = Math.floor(this.state.campaignCoins / 50);
+    const before = Math.floor(this.state.campaignCoins / 100);
     this.state.coins++;
     this.state.campaignCoins++;
     this.state.score += 100;
     this.audio.coin();
-    if (Math.floor(this.state.campaignCoins / 50) > before) {
+    if (Math.floor(this.state.campaignCoins / 100) > before) {
       this.state.lives = Math.min(9, this.state.lives + 1);
-      this.notify('50 coins · 1-UP!', 3);
+      this.notify('100 coins · 1-UP!', 3);
     }
     this.emit();
   }
@@ -610,6 +807,7 @@ export class GameEngine {
       }
     }
     this.damageCount++;
+    this.mazePassed.clear();
     this.state.lives--;
     this.state.power = 'small';
     this.starTime = 0;
@@ -631,6 +829,10 @@ export class GameEngine {
           this.world.level.checkpoint)
         : this.world.level.spawn),
     };
+    this.area = Math.round(this.player.x / AREA_SPACING);
+    this.player.height = HEIGHT;
+    this.applyTheme();
+    this.portalCooldown = 1;
     this.yaw = 0;
     this.pitch = 0;
     this.coyote = 0;
@@ -647,11 +849,18 @@ export class GameEngine {
     );
   }
   win() {
-    if (this.state.status !== 'playing' || this.world.boss?.alive) return;
+    const goal = this.world.level.goal;
+    if (
+      this.state.status !== 'playing' ||
+      this.world.boss?.alive ||
+      this.area !== this.world.level.goalArea ||
+      Math.hypot(this.player.x - goal.x, this.player.z - goal.z) > 1.8 ||
+      this.player.y < goal.y - 0.1
+    )
+      return;
     this.state.status =
       this.state.level === LEVELS.length - 1 ? 'won' : 'clear';
     this.state.score += Math.ceil(this.remaining) * 10 + 1000;
-    this.state.lives = Math.min(9, this.state.lives + 1);
     this.state.notice = '';
     this.clearInput();
     this.audio.win();
@@ -669,10 +878,11 @@ export class GameEngine {
       record.score,
       this.state.score - this.levelStartScore,
     );
-    this.save.unlocked = Math.max(
-      this.save.unlocked,
-      Math.min(LEVELS.length - 1, this.state.level + 1),
-    );
+    while (
+      this.save.unlocked < LEVELS.length - 1 &&
+      this.save.records[this.save.unlocked].cleared
+    )
+      this.save.unlocked++;
     saveProgress(this.save);
     this.updateLevelState();
     this.burst(this.player.x, this.player.y + 2, this.player.z - 4, 55);
@@ -714,18 +924,30 @@ export class GameEngine {
     vy: number,
     vz: number,
     hostile = false,
+    kind: Projectile['kind'] = 'fire',
   ) {
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(hostile ? 0.29 : 0.17, 10, 8),
+      kind === 'hammer'
+        ? new THREE.BoxGeometry(0.32, 0.4, 0.18)
+        : new THREE.SphereGeometry(hostile ? 0.22 : 0.17, 10, 8),
       new THREE.MeshStandardMaterial({
-        color: hostile ? '#ff5433' : '#ffe164',
+        color:
+          kind === 'bullet'
+            ? '#232939'
+            : kind === 'hammer'
+              ? '#876d52'
+              : hostile
+                ? '#ff5433'
+                : '#ffe164',
         emissive: '#ff6a1b',
-        emissiveIntensity: 1.5,
+        emissiveIntensity: kind === 'fire' ? 1.5 : 0,
       }),
     );
     mesh.position.set(x, y, z);
     this.scene.add(mesh);
+    if (kind === 'bullet') mesh.scale.z = 2;
     this.projectiles.push({
+      kind,
       mesh,
       vx,
       vy,
@@ -776,61 +998,315 @@ export class GameEngine {
     const b = this.world.boss;
     if (!b?.alive || b.hurt > 0) return;
     b.health--;
-    b.hurt = 1.8;
+    b.hurt = 0.5;
     this.audio.stomp();
     this.burst(b.x, b.y + 1.5, b.z, 15);
     if (b.health <= 0) {
       b.alive = false;
       b.mesh.visible = false;
       this.state.score += 5000;
-      if (this.world.gate) this.world.gate.visible = false;
-      if (this.world.gateBox) this.world.gateBox.active = false;
       this.clearProjectiles();
-      this.notify(
-        'Bowser defeated! The castle gate is open. Reach the flag!',
-        5,
-      );
+      this.notify('Bowser defeated! Continue into the rescue room.', 5);
     } else
       this.notify(
         `${b.health} ${b.health === 1 ? 'hit' : 'hits'} to go! Watch for the next fireball.`,
         2,
       );
   }
+  dropBridge() {
+    if (this.bridgeDown) return;
+    this.bridgeDown = true;
+    for (const bridge of this.world.bridges) {
+      bridge.box.active = false;
+      bridge.mesh.visible = false;
+      bridge.hide?.();
+    }
+    const boss = this.world.boss;
+    if (boss?.alive) {
+      boss.health = 0;
+      boss.alive = false;
+      boss.mesh.visible = false;
+      this.state.score += 5000;
+    }
+    if (this.world.axe) this.world.axe.visible = false;
+    this.clearProjectiles();
+    this.audio.win();
+    this.notify('The bridge is down! Continue to the rescue room.', 4);
+  }
   movePlatforms(dt: number) {
     this.levelElapsed += dt;
     const p = this.player;
+    const riding = (b: Box) =>
+      p.grounded && Math.abs(p.y - (b.y + b.h / 2)) < 0.06 && overlapXZ(p, b);
     for (const platform of this.world.platforms) {
       const b = platform.box,
         old = b[platform.axis],
-        riding =
-          p.grounded &&
-          Math.abs(p.y - (b.y + b.h / 2)) < 0.06 &&
-          overlapXZ(p, b);
-      b[platform.axis] =
-        platform.origin +
-        Math.sin(this.levelElapsed * platform.speed + platform.phase) *
-          platform.distance;
+        on = riding(b);
+      if (platform.mode === 'elevator')
+        b.y =
+          ((((this.levelElapsed * platform.speed * (platform.direction ?? 1) +
+            platform.phase * platform.distance) %
+            platform.distance) +
+            platform.distance) %
+            platform.distance) -
+          0.225;
+      else if (platform.mode === 'falling') {
+        if (on) b.y -= platform.speed * dt;
+        else if (b.y < platform.origin - 3) b.y = platform.origin;
+      } else if (platform.mode === 'scale') {
+        const other = this.world.platforms.find(
+          (q) => q !== platform && q.pair === platform.pair,
+        );
+        if (on)
+          b.y = Math.max(
+            platform.origin - platform.distance,
+            b.y - platform.speed * dt,
+          );
+        else if (other && riding(other.box))
+          b.y = Math.min(
+            platform.origin + platform.distance,
+            b.y + platform.speed * dt,
+          );
+      } else if (platform.mode === 'ride') {
+        if (on) platform.started = true;
+        if (platform.started)
+          b[platform.axis] += (platform.direction ?? -1) * platform.speed * dt;
+      } else
+        b[platform.axis] =
+          platform.origin +
+          Math.sin(this.levelElapsed * platform.speed + platform.phase) *
+            platform.distance;
       platform.mesh.position[platform.axis] = b[platform.axis];
-      if (riding) p[platform.axis] += b[platform.axis] - old;
+      if (on && Math.abs(b[platform.axis] - old) < 1)
+        p[platform.axis] += b[platform.axis] - old;
     }
+  }
+  updateEnemies(dt: number, oldY: number) {
+    const p = this.player,
+      wet = this.world.level.areas[this.area].underwater;
+    for (const [index, e] of this.world.enemies.entries()) {
+      if (!e.alive || (e.area ?? 0) !== this.area) continue;
+      if (!e.activated && Math.abs(p.z - e.z) > 24) continue;
+      e.activated = true;
+      e.stun = Math.max(0, e.stun - dt);
+      e.cooldown -= dt;
+      if (e.kind === 'piranha') {
+        const near = Math.hypot(p.x - e.homeX, p.z - e.homeZ) < 1.7;
+        e.y =
+          e.homeY +
+          (near ? -1.2 : Math.sin(this.levelElapsed * 1.7 + index) * 1.0 - 0.8);
+      } else if (e.kind === 'podoboo' || e.leaping) {
+        e.y =
+          e.homeY + Math.max(0, Math.sin(this.levelElapsed * 1.6 + index)) * 7;
+        if (e.kind === 'cheep')
+          e.x = e.homeX + Math.sin(this.levelElapsed * 1.6 + index) * 0.8;
+      } else if (e.kind === 'blooper') {
+        e.y = THREE.MathUtils.clamp(e.y + (p.y + 0.3 - e.y) * dt * 0.8, 0.5, 8);
+        e.z += (p.z - e.z) * dt * 0.28;
+        e.x += (p.x - e.x) * dt * 0.4;
+      } else if (e.kind === 'cheep') {
+        e.z = e.homeZ + Math.sin(this.levelElapsed * 0.7 + index) * 3;
+        e.y = e.homeY + Math.sin(this.levelElapsed * 1.2 + index) * 0.5;
+      } else if (e.kind === 'lakitu') {
+        e.z = THREE.MathUtils.lerp(e.z, p.z - 5, dt * 0.6);
+        e.y = Math.max(e.homeY, p.y + 5);
+        if (e.cooldown <= 0) {
+          e.cooldown = 2.5;
+          this.spawnSpiny(e.x, e.y - 0.4, e.z);
+        }
+      } else {
+        if (e.flying)
+          e.y =
+            e.homeY + Math.abs(Math.sin(this.levelElapsed * 1.8 + index)) * 2.5;
+        else {
+          const old = e.y;
+          e.vy -= 25 * dt;
+          e.y += e.vy * dt;
+          for (const box of this.world.boxes)
+            if (
+              box.active !== false &&
+              !box.hidden &&
+              Math.abs(e.x - box.x) < box.w / 2 + 0.3 &&
+              Math.abs(e.z - box.z) < box.d / 2 + 0.3
+            ) {
+              const top = box.y + box.h / 2;
+              if (e.vy <= 0 && old >= top - 0.08 && e.y <= top) {
+                e.y = top;
+                e.vy = 0;
+              }
+            }
+        }
+        if (e.roam && !e.flying) {
+          moveGroundEnemy(e, p, this.world.boxes, dt, this.levelElapsed, index);
+        } else if (!e.shell && e.kind !== 'hammer') {
+          const axis = e.axis ?? 'z',
+            speed =
+              e.kind === 'spiny' ? 1.15 : e.kind === 'koopa' ? 1.15 : 0.85;
+          const next = e[axis] + e.direction * speed * dt;
+          const probe = { ...p, x: e.x, y: e.y + 0.04, z: e.z };
+          probe[axis] = next + e.direction * 0.45;
+          const supported = this.world.boxes.some(
+            (b) =>
+              b.active !== false &&
+              !b.hidden &&
+              Math.abs(b.y + b.h / 2 - e.y) < 0.15 &&
+              overlapXZ(probe, b),
+          );
+          const blocked = this.world.boxes.some(
+            (b) =>
+              b.active !== false &&
+              !b.hidden &&
+              b.y + b.h / 2 > e.y + 0.2 &&
+              b.y - b.h / 2 < e.y + 0.8 &&
+              overlapXZ(probe, b),
+          );
+          if (
+            Math.abs(next - e.home) > e.range ||
+            blocked ||
+            (!supported && !e.flying)
+          )
+            e.direction *= -1;
+          else e[axis] = next;
+        }
+        if (
+          e.kind === 'hammer' &&
+          e.cooldown <= 0 &&
+          Math.abs(p.z - e.z) < 14
+        ) {
+          e.cooldown = 1.5;
+          const direction = Math.sign(p.z - e.z);
+          this.projectile(
+            e.x,
+            e.y + 1.3,
+            e.z + direction * 0.5,
+            0,
+            7,
+            direction * 4,
+            true,
+            'hammer',
+          );
+        }
+      }
+      if (e.y < -8) {
+        e.alive = false;
+        e.mesh.visible = false;
+        continue;
+      }
+      const top =
+        e.y +
+        (e.shell
+          ? 0.45
+          : e.kind === 'koopa' || e.kind === 'hammer'
+            ? 1.3
+            : e.kind === 'piranha'
+              ? 1
+              : 1.05);
+      if (
+        Math.hypot(p.x - e.x, p.z - e.z) < 0.88 &&
+        p.y < top &&
+        p.y + playerHeight(p) > e.y + 0.08
+      ) {
+        if (this.starTime > 0 && !['podoboo'].includes(e.kind)) {
+          this.defeatEnemy(e);
+          continue;
+        }
+        const stompable =
+          !wet && !['piranha', 'podoboo', 'spiny'].includes(e.kind);
+        if (stompable && p.vy < 0 && oldY >= top - 0.22 && e.stun <= 0) {
+          if ((e.kind === 'koopa' || e.kind === 'beetle') && !e.shell) {
+            e.shell = true;
+            e.flying = false;
+            e.stun = 0.25;
+            e.mesh.scale.y = 0.42;
+            this.state.score += 100;
+            this.audio.stomp();
+          } else this.defeatEnemy(e);
+          p.y = top + 0.02;
+          p.vy = 10;
+          p.grounded = false;
+          this.coyote = 0;
+        } else if (this.invulnerable <= 0 && e.stun <= 0) {
+          this.lose('goomba');
+          return;
+        }
+      }
+    }
+  }
+  spawnSpiny(x: number, y: number, z: number) {
+    if (
+      this.world.enemies.filter((e) => e.kind === 'spiny' && e.alive).length >=
+      12
+    )
+      return;
+    const mesh = new THREE.Group(),
+      body = new THREE.Mesh(
+        new THREE.SphereGeometry(0.4, 10, 8),
+        new THREE.MeshStandardMaterial({ color: '#ec5548' }),
+      );
+    body.position.y = 0.4;
+    mesh.add(body);
+    for (const side of [-1, 0, 1]) {
+      const spike = new THREE.Mesh(
+        new THREE.ConeGeometry(0.1, 0.3, 6),
+        new THREE.MeshStandardMaterial({ color: '#fff1d4' }),
+      );
+      spike.position.set(side * 0.22, 0.8, 0);
+      mesh.add(spike);
+    }
+    mesh.position.set(x, y, z);
+    this.world.root.add(mesh);
+    this.world.enemies.push({
+      mesh,
+      x,
+      y,
+      z,
+      home: z,
+      homeX: x,
+      homeY: y,
+      homeZ: z,
+      axis: 'z',
+      range: 4,
+      direction: 1,
+      alive: true,
+      stompTime: 0,
+      kind: 'spiny',
+      shell: false,
+      stun: 0,
+      cooldown: 1,
+      activated: true,
+      vy: 0,
+      area: this.area,
+    });
   }
   simulate(dt: number) {
     if (this.state.status !== 'playing') return;
     this.courseTime += dt;
     this.movePlatforms(dt);
-    const p = this.player;
+    this.updateHeight();
+    const p = this.player,
+      wet = this.world.level.areas[this.area].underwater;
     this.remaining = Math.max(0, this.remaining - dt);
     this.invulnerable = Math.max(0, this.invulnerable - dt);
     this.starTime = Math.max(0, this.starTime - dt);
     this.shootCooldown = Math.max(0, this.shootCooldown - dt);
-    if (p.grounded) this.coyote = 0.1;
-    else this.coyote = Math.max(0, this.coyote - dt);
-    if (this.jumpBuffer > 0 && this.coyote > 0) {
-      p.vy = JUMP_SPEED;
-      p.grounded = false;
+    this.portalCooldown = Math.max(0, this.portalCooldown - dt);
+    if (wet) {
+      p.vy = THREE.MathUtils.clamp(
+        p.vy + (this.jumpHeld ? 18 : 0) * dt,
+        -2.3,
+        4,
+      );
       this.coyote = 0;
-      this.jumpBuffer = 0;
-      this.audio.jump();
+    } else {
+      if (p.grounded) this.coyote = 0.1;
+      else this.coyote = Math.max(0, this.coyote - dt);
+      if (this.jumpBuffer > 0 && this.coyote > 0) {
+        p.vy = JUMP_SPEED;
+        p.grounded = false;
+        this.coyote = 0;
+        this.jumpBuffer = 0;
+        this.audio.jump();
+      }
     }
     this.jumpBuffer = Math.max(0, this.jumpBuffer - dt);
     if (this.keys.has('KeyF')) this.shoot();
@@ -847,23 +1323,50 @@ export class GameEngine {
     const length = Math.max(1, Math.hypot(forward, strafe));
     forward /= length;
     strafe /= length;
-    const speed =
-      this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 10.8 : 7.1;
+    const speed = wet
+      ? 3.1
+      : this.keys.has('KeyC')
+        ? 2.4
+        : this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
+          ? 10.8
+          : 7.1;
     const targetX =
         (-Math.sin(this.yaw) * forward + Math.cos(this.yaw) * strafe) * speed,
       targetZ =
         (-Math.cos(this.yaw) * forward - Math.sin(this.yaw) * strafe) * speed;
-    const smoothing = 1 - Math.exp(-(p.grounded ? 20 : 9) * dt);
+    const smoothing = 1 - Math.exp(-(p.grounded ? 20 : wet ? 6 : 9) * dt);
     p.vx = THREE.MathUtils.lerp(p.vx, targetX, smoothing);
     p.vz = THREE.MathUtils.lerp(p.vz, targetZ, smoothing);
     const oldY = p.y;
-    stepPlayer(p, this.world.boxes, dt, (b) => this.bump(b));
-    if (
-      p.y < -8 ||
-      ((this.world.level.theme === 'lava' ||
-        this.world.level.theme === 'castle') &&
-        p.y < -2.4)
-    ) {
+    stepPlayer(p, this.world.boxes, dt, (b) => this.bump(b), wet ? 6 : 25);
+    if (wet && p.y + playerHeight(p) > 9.4) {
+      p.y = 9.4 - playerHeight(p);
+      p.vy = Math.min(0, p.vy);
+    }
+    if (p.grounded)
+      for (const spring of this.world.springs)
+        if (
+          Math.abs(p.y - spring.y - spring.h / 2) < 0.1 &&
+          overlapXZ(p, spring)
+        ) {
+          p.vy = 19;
+          p.grounded = false;
+          this.coyote = 0;
+          this.audio.jump();
+        }
+    const inLava =
+      !wet &&
+      this.world.level.lava.some(
+        (b) =>
+          b.area === this.area && overlapXZ(p, b) && p.y < b.y + b.h / 2 + 0.04,
+      );
+    const skyExit = this.world.level.areas[this.area].exit;
+    if (skyExit && p.y < -2) {
+      this.enterArea(skyExit.area, skyExit.point);
+      this.notify('Back to the main course.', 2);
+      return;
+    }
+    if (p.y < -8 || inLava) {
       this.lose('fall');
       return;
     }
@@ -871,211 +1374,188 @@ export class GameEngine {
       this.lose('time');
       return;
     }
-    for (const c of this.world.coins) {
-      if (c.taken) continue;
+    for (const c of this.world.coins)
       if (
-        Math.hypot(p.x - c.x, p.z - c.z) < (c.star === undefined ? 0.78 : 1) &&
-        p.y + HEIGHT > c.y - 0.4 &&
-        p.y < c.y + 0.4
+        !c.taken &&
+        Math.hypot(p.x - c.x, p.z - c.z) < 0.7 &&
+        p.y + playerHeight(p) > c.y - 0.3 &&
+        p.y < c.y + 0.3
       ) {
         c.taken = true;
         c.mesh.visible = false;
-        if (c.star === undefined) this.collect();
-        else {
-          this.state.stars |= 1 << c.star;
-          this.state.score += 1000;
-          this.audio.coin();
-          this.notify(`Star coin ${countStars(this.state.stars)} / 3!`, 2);
-        }
-        this.burst(c.x, c.y, c.z, 5);
+        this.collect();
+        this.burst(c.x, c.y, c.z, 4);
       }
-    }
-    for (const power of this.world.pickups) {
-      if (!power.active || power.taken) continue;
+    for (const power of this.world.pickups)
       if (
+        power.active &&
+        !power.taken &&
         Math.hypot(p.x - power.x, p.z - power.z) < 0.85 &&
-        p.y + HEIGHT > power.y - 0.5 &&
-        p.y < power.y + 0.5
+        p.y + playerHeight(p) > power.y - 0.4 &&
+        p.y < power.y + 0.4
       ) {
         power.taken = true;
         power.mesh.visible = false;
         this.state.score += 300;
         if (power.kind === 'star') this.starTime = 12;
+        else if (power.kind === 'life')
+          this.state.lives = Math.min(9, this.state.lives + 1);
         else if (power.kind === 'flower') this.state.power = 'fire';
         else if (this.state.power === 'small') this.state.power = 'super';
         this.audio.tone(880, 0.25, 'triangle', 0.08);
         this.notify(
-          power.kind === 'star'
-            ? 'Invincible for 12 seconds!'
-            : power.kind === 'flower'
-              ? 'Fire Mario! Press F or click to throw fireballs.'
-              : 'Super Mario! You can take an extra hit.',
-          3,
+          power.kind === 'life'
+            ? '1-UP!'
+            : power.kind === 'star'
+              ? 'Invincible!'
+              : power.kind === 'flower'
+                ? 'Fire Mario! F or click to throw.'
+                : 'Super Mario!',
+          2,
         );
       }
-    }
-    for (const e of this.world.enemies) {
-      if (!e.alive) continue;
-      e.stun = Math.max(0, e.stun - dt);
-      if (!e.shell) {
-        const next = e.x + e.direction * (e.kind === 'koopa' ? 1.4 : 1.05) * dt;
-        // Patrols turn at walls, pipes and unsupported edges, including elevated floors.
-        const probe = {
-          ...p,
-          x: next + e.direction * 0.6,
-          y: e.y + 0.04,
-          z: e.z,
-        };
-        const supported = this.world.boxes.some(
-          (b) =>
-            b.active !== false &&
-            Math.abs(b.y + b.h / 2 - e.y) < 0.1 &&
-            overlapXZ(probe, b),
-        );
-        const blocked = this.world.boxes.some(
-          (b) =>
-            b.active !== false &&
-            b.y + b.h / 2 > e.y + 0.2 &&
-            b.y - b.h / 2 < e.y + 1 &&
-            overlapXZ(probe, b),
-        );
-        if (Math.abs(next - e.home) > e.range || !supported || blocked)
-          e.direction *= -1;
-        else e.x = next;
-      }
-      const top = e.y + (e.shell ? 0.5 : e.kind === 'koopa' ? 1.3 : 1.05);
-      if (
-        Math.hypot(p.x - e.x, p.z - e.z) < 0.88 &&
-        p.y < top &&
-        p.y + HEIGHT > e.y + 0.12
-      ) {
-        if (this.starTime > 0) {
-          this.defeatEnemy(e);
-          continue;
-        }
-        if (p.vy < 0 && oldY >= top - 0.22 && e.stun <= 0) {
-          if (e.kind === 'koopa' && !e.shell) {
-            e.shell = true;
-            e.stun = 0.25;
-            e.mesh.scale.y = 0.42;
-            this.state.score += 100;
-            this.audio.stomp();
-          } else this.defeatEnemy(e);
-          p.y = top + 0.02;
-          p.vy = 10;
-          p.grounded = false;
-          this.coyote = 0;
-        } else if (this.invulnerable <= 0 && e.stun <= 0) {
-          this.lose('goomba');
+    this.updateEnemies(dt, oldY);
+    if (this.player !== p) return;
+    for (const bar of this.world.firebars) {
+      if ((bar.area ?? 0) !== this.area) continue;
+      bar.angle = this.levelElapsed * bar.speed;
+      if (bar.plane === 'horizontal') bar.mesh.rotation.y = -bar.angle;
+      else bar.mesh.rotation.x = bar.angle;
+      for (let r = 0.4; r <= bar.length; r += 0.45) {
+        const horizontal = bar.plane === 'horizontal';
+        const x = horizontal ? bar.x + Math.cos(bar.angle) * r : bar.x,
+          y = horizontal ? bar.y : bar.y - Math.sin(bar.angle) * r,
+          z =
+            bar.z +
+            (horizontal ? Math.sin(bar.angle) : Math.cos(bar.angle)) * r;
+        if (
+          Math.hypot(p.x - x, p.z - z) < RADIUS + 0.25 &&
+          p.y < y + 0.25 &&
+          p.y + playerHeight(p) > y - 0.25 &&
+          this.invulnerable <= 0 &&
+          this.starTime <= 0
+        ) {
+          this.lose('fire');
           return;
         }
       }
     }
-    for (const bar of this.world.firebars) {
-      bar.angle = this.levelElapsed * bar.speed;
-      bar.mesh.rotation.y = -bar.angle;
-      for (let r = 0.6; r <= bar.length; r += 0.55) {
-        const x = bar.x + Math.cos(bar.angle) * r,
-          z = bar.z + Math.sin(bar.angle) * r;
-        if (
-          Math.hypot(p.x - x, p.z - z) < RADIUS + 0.27 &&
-          p.y < bar.y + 0.27 &&
-          p.y + HEIGHT > bar.y - 0.27
-        ) {
-          if (this.invulnerable <= 0 && this.starTime <= 0) {
-            this.lose('fire');
-            return;
-          }
+    for (const [i, cannon] of this.world.level.cannons.entries())
+      if (cannon.area === this.area && Math.abs(p.z - cannon.z) < 22) {
+        this.cannonClocks[i] = (this.cannonClocks[i] ?? i * 0.2) - dt;
+        if (this.cannonClocks[i] <= 0) {
+          this.cannonClocks[i] = 2.6;
+          const dir = Math.sign(p.z - cannon.z) || 1;
+          this.projectile(
+            cannon.x,
+            Math.max(0.65, cannon.y - 0.3),
+            cannon.z + dir * 0.7,
+            0,
+            0,
+            dir * 6,
+            true,
+            'bullet',
+          );
         }
       }
-    }
     const boss = this.world.boss;
-    if (boss?.alive) {
+    if (boss?.alive && this.area === this.world.level.goalArea) {
       boss.hurt = Math.max(0, boss.hurt - dt);
-      boss.x = boss.home + Math.sin(this.levelElapsed * 0.75) * 3;
+      boss.x = boss.home + Math.sin(this.levelElapsed * 0.75) * 2.7;
       boss.mesh.position.set(boss.x, boss.y, boss.z);
       boss.mesh.visible = boss.hurt <= 0 || Math.floor(boss.hurt * 8) % 2 === 0;
-      if (Math.hypot(p.x - boss.x, p.z - boss.z) < 28) {
+      if (Math.hypot(p.x - boss.x, p.z - boss.z) < 22) {
         boss.cooldown -= dt;
         if (boss.cooldown <= 0) {
-          boss.cooldown = 2.8 - (this.world.level.world ?? 0) * 0.16;
-          const direction = new THREE.Vector3(
+          boss.cooldown = 2.8 - this.world.level.world * 0.14;
+          const aim = new THREE.Vector3(
             p.x - boss.x,
-            p.y + 0.8 - (boss.y + 1.5),
+            p.y + 0.8 - (boss.y + 0.65),
             p.z - boss.z,
           ).normalize();
+          const dir = Math.sign(p.z - boss.z) || 1;
           this.projectile(
             boss.x,
-            boss.y + 1.5,
-            boss.z + 1.3,
-            direction.x * 9,
-            direction.y * 9,
-            direction.z * 9,
+            boss.y + 0.65,
+            boss.z + dir * 1.2,
+            aim.x * 7,
+            aim.y * 7,
+            aim.z * 7,
             true,
           );
-          if ((this.world.level.world ?? 0) >= 3 && boss.health <= 2) {
-            for (const angle of [-0.22, 0.22])
-              this.projectile(
-                boss.x,
-                boss.y + 1.5,
-                boss.z + 1.3,
-                (direction.x * Math.cos(angle) -
-                  direction.z * Math.sin(angle)) *
-                  9,
-                direction.y * 9,
-                (direction.x * Math.sin(angle) +
-                  direction.z * Math.cos(angle)) *
-                  9,
-                true,
-              );
-          }
+          if (this.world.level.world >= 5)
+            this.projectile(
+              boss.x,
+              boss.y + 1.2,
+              boss.z + dir * 0.7,
+              0,
+              7,
+              dir * 4,
+              true,
+              'hammer',
+            );
         }
       }
       if (
         Math.hypot(p.x - boss.x, p.z - boss.z) < 1.35 &&
-        p.y < boss.y + 2.5 &&
-        p.y + HEIGHT > boss.y + 0.2
+        p.y < boss.y + 2.4 &&
+        p.y + playerHeight(p) > boss.y + 0.15 &&
+        this.invulnerable <= 0 &&
+        this.starTime <= 0
       ) {
-        if (p.vy < 0 && oldY >= boss.y + 2.25) {
-          this.hitBoss();
-          p.vy = 12;
-          p.y = boss.y + 2.52;
-          p.grounded = false;
-          this.coyote = 0;
-        } else if (this.starTime > 0) this.hitBoss();
-        else if (boss.hurt <= 0 && this.invulnerable <= 0) {
-          this.lose('goomba');
-          return;
-        }
+        this.lose('goomba');
+        return;
       }
     }
+    const axe = this.world.level.axe;
+    if (
+      axe &&
+      !this.bridgeDown &&
+      Math.hypot(p.x - axe.x, p.z - axe.z) < 0.9 &&
+      p.y + playerHeight(p) > axe.y - 0.4 &&
+      p.y < axe.y + 0.4
+    )
+      this.dropBridge();
     this.updateProjectiles(dt);
     if (this.player !== p || this.state.status !== 'playing') return;
-    const checkpoints = this.world.level.checkpoints ?? [
-      this.world.level.checkpoint,
-    ];
-    for (const [i, cp] of checkpoints.entries())
+    for (const route of this.world.level.mazeRoutes) {
+      if (route.area !== this.area || p.z > route.startZ || p.z < route.endZ)
+        continue;
+      if (p.y >= route.minY - 0.15 && p.y < route.maxY - 0.1)
+        this.mazePassed.add(route.id);
+      else this.mazePassed.delete(route.id);
+    }
+    for (const exit of this.world.level.mazeExits)
+      if (
+        exit.area === this.area &&
+        p.z < exit.z &&
+        p.z > exit.z - 1.5 &&
+        (exit.requires.length === 0 ||
+          !exit.requires.every((id) => this.mazePassed.has(id)))
+      ) {
+        this.enterArea(this.area, exit.target);
+        for (const id of exit.requires) this.mazePassed.delete(id);
+        this.notify('The castle loops back. Try a different passage.', 3);
+        return;
+      }
+    const auto = this.nearPortal();
+    if (auto?.mode === 'walk') {
+      this.interact();
+      return;
+    }
+    for (const [i, cp] of this.world.level.checkpoints.entries())
       if (
         i > this.checkpointIndex &&
         p.grounded &&
-        Math.hypot(p.x - cp.x, p.z - cp.z) < 3 &&
+        Math.hypot(p.x - cp.x, p.z - cp.z) < 1.2 &&
         Math.abs(p.y - cp.y) < 0.15
       ) {
         this.checkpoint = true;
         this.checkpointIndex = i;
         this.audio.tone(784, 0.2, 'triangle', 0.08);
-        this.notify(
-          `Checkpoint ${i + 1} / ${checkpoints.length}! A safe place to start again.`,
-          3,
-        );
+        this.notify('Checkpoint reached.', 2);
       }
-    const goal = this.world.level.goal;
-    if (
-      Math.hypot(p.x - goal.x, p.z - goal.z) < 1.8 &&
-      p.y >= goal.y - 0.1 &&
-      p.y < goal.y + 5
-    )
-      this.win();
+    this.win();
   }
   updateProjectiles(dt: number) {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
@@ -1083,7 +1563,9 @@ export class GameEngine {
         pos = shot.mesh.position,
         oldY = pos.y;
       shot.life -= dt;
-      if (!shot.hostile) shot.vy -= 14 * dt;
+      if (!shot.hostile || shot.kind === 'hammer')
+        shot.vy -= (shot.hostile ? 18 : 14) * dt;
+      if (shot.kind === 'hammer') shot.mesh.rotation.x += dt * 9;
       pos.x += shot.vx * dt;
       pos.y += shot.vy * dt;
       pos.z += shot.vz * dt;
@@ -1091,6 +1573,7 @@ export class GameEngine {
       for (const b of this.world.boxes) {
         if (
           b.active === false ||
+          b.hidden ||
           Math.abs(pos.x - b.x) > b.w / 2 + 0.15 ||
           Math.abs(pos.z - b.z) > b.d / 2 + 0.15
         )
@@ -1116,7 +1599,7 @@ export class GameEngine {
         if (
           Math.hypot(pos.x - this.player.x, pos.z - this.player.z) < 0.65 &&
           pos.y > this.player.y - 0.1 &&
-          pos.y < this.player.y + HEIGHT + 0.1
+          pos.y < this.player.y + playerHeight(this.player) + 0.1
         ) {
           hit = true;
           if (this.invulnerable <= 0 && this.starTime <= 0) {
@@ -1132,7 +1615,8 @@ export class GameEngine {
             pos.y > e.y - 0.1 &&
             pos.y < e.y + 1.5
           ) {
-            this.defeatEnemy(e);
+            if (e.kind !== 'beetle' && e.kind !== 'podoboo')
+              this.defeatEnemy(e);
             hit = true;
             break;
           }
@@ -1183,7 +1667,7 @@ export class GameEngine {
         e.mesh.rotation.z = e.shell
           ? 0
           : Math.sin(this.elapsed * 7 + e.z) * 0.06;
-        e.mesh.rotation.y = 0.15 * e.direction;
+        e.mesh.rotation.y = e.heading ?? 0.15 * e.direction;
       } else if (e.stompTime > 0) {
         e.stompTime -= dt;
         e.mesh.scale.y = 0.22;
@@ -1258,7 +1742,7 @@ export class GameEngine {
             : 0;
       this.camera.position.set(
         this.player.x,
-        this.player.y + HEIGHT - 0.12 + bob,
+        this.player.y + playerHeight(this.player) - 0.12 + bob,
         this.player.z,
       );
       this.camera.rotation.order = 'YXZ';
@@ -1305,6 +1789,8 @@ export class GameEngine {
   };
   destroy() {
     this.running = false;
+    this.finishCapture?.(false);
+    if (this.captureTimer !== undefined) clearTimeout(this.captureTimer);
     this.runtime.destroy();
     this.releasePointer();
     this.graphicsRequest++;

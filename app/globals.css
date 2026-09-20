@@ -2527,3 +2527,547 @@ kbd {
     bottom: 118px;
   }
 }
+
+/* Original NES course atlas: every course is on the start screen. */
+.nes-game.is-home .world-canvas {
+  opacity: 0.19;
+}
+.nes-game.is-home {
+  background: #112e32;
+}
+.nes-game.is-home .scene-shade {
+  background: linear-gradient(#10303550, #112c31 620px);
+}
+.home-scroll {
+  position: absolute;
+  inset: calc(100px + var(--safe-top)) 0 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px max(5.5%, var(--safe-left)) max(26px, var(--safe-bottom));
+  scrollbar-width: thin;
+}
+.nes-game .nes-intro {
+  position: relative;
+  inset: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 40px;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  padding: 0 0 30px;
+  overflow: visible;
+  scrollbar-width: none;
+}
+.nes-intro h1 {
+  font-size: clamp(35px, 4.5vw, 66px);
+  letter-spacing: -0.045em;
+  line-height: 1;
+  margin: 18px 0;
+}
+.nes-intro p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 16px 0 20px;
+  max-width: none;
+}
+.nes-intro .play-button {
+  min-width: 196px;
+  padding: 16px 20px;
+  font-size: 15px;
+}
+.nes-intro .creator-links {
+  font-size: 11px;
+  margin-top: 16px;
+}
+.nes-intro .creator-links > span {
+  display: none;
+}
+.nes-intro .creator-links a {
+  font-size: 11px;
+  min-height: 32px;
+}
+.nes-intro .creator-links {
+  display: flex;
+  gap: 22px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.nes-intro .creator-links [data-collection-return] {
+  min-height: 32px !important;
+  padding: 0 !important;
+}
+.next-level-label {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  color: #b9d4c7;
+  line-height: 1.8;
+}
+.next-level-label strong {
+  display: block;
+  font-size: 12px;
+  color: #ffe5a5;
+  letter-spacing: 0.06em;
+}
+.campaign-summary {
+  width: 225px;
+  flex-shrink: 0;
+  border: 1px solid #ffffff26;
+  background: #29504f80;
+  border-radius: 16px;
+  padding: 25px;
+}
+.summary-icon {
+  display: block;
+  color: #ffe299;
+  margin-bottom: 20px;
+}
+.campaign-summary > strong {
+  font-size: 54px;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+.campaign-summary > strong > span {
+  font-size: 22px;
+  color: #bdd0c2;
+  font-weight: 400;
+}
+.campaign-summary > small {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.17em;
+  margin-top: 7px;
+  color: #d2e3d5;
+}
+.campaign-summary p {
+  font-size: 12px;
+  color: #c2d8c9;
+  margin: 16px 0 0;
+}
+.atlas-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #ffffff22;
+  padding-top: 25px;
+  margin: 5px 0 25px;
+  gap: 20px;
+}
+.atlas-heading h2 {
+  font-size: 22px;
+  margin: 0;
+  letter-spacing: -0.025em;
+}
+.atlas-heading > span {
+  display: flex;
+  gap: 7px;
+  font-size: 11px;
+  color: #c4d7cb;
+  align-items: center;
+}
+.world-section {
+  margin-bottom: 30px;
+}
+.world-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.world-section-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.world-number {
+  font-size: 10px;
+  border: 1px solid #ffffff36;
+  border-radius: 6px;
+  padding: 5px 7px;
+  color: #ffe297;
+}
+.world-section-heading h3 {
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.world-section-heading > span {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: #acc5b8;
+}
+.nes-level-card {
+  border-radius: 10px;
+  background: #24464b;
+}
+.nes-level-card:disabled {
+  opacity: 0.55;
+}
+.nes-level-card.next-course {
+  border-color: #f6d273;
+  background: #315450;
+  box-shadow: 0 0 0 1px #edcc5933;
+}
+.nes-level-card.completed {
+  border-color: #89c7a578;
+}
+.card-preview {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid #ffffff14;
+  background: #75bace;
+  padding-top: 15px;
+}
+.course-thumbnail {
+  width: 100%;
+  height: auto;
+  display: block;
+  min-height: 68px;
+  background: linear-gradient(#75bace, #b4dedb);
+}
+.thumbnail-cave {
+  background: linear-gradient(#1c344f, #3b6882);
+}
+.thumbnail-water {
+  background: linear-gradient(#167cb3, #123b77);
+}
+.thumbnail-castle,
+.thumbnail-lava {
+  background: linear-gradient(#33283c, #6f424b);
+}
+.thumbnail-night {
+  background: linear-gradient(#1a304c, #46648b);
+}
+.thumbnail-sky {
+  background: linear-gradient(#7fb1e5, #d1e0f1);
+}
+.course-id {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  color: #fff5d9;
+  text-shadow: 0 1px 4px #183338aa;
+}
+.course-lock {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  color: #fff5d9;
+}
+.nes-level-card .level-card-body {
+  padding: 13px 14px 14px;
+}
+.nes-level-card .level-card-body small {
+  font-size: 8px;
+  letter-spacing: 0.13em;
+  color: #bcd3c6;
+}
+.nes-level-card h4 {
+  font-size: 14px;
+  letter-spacing: -0.02em;
+  margin: 8px 0 12px;
+  line-height: 1.3;
+  font-weight: 700;
+}
+.course-card-status {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 9px;
+  color: #bfd3c9;
+}
+.next-course .course-card-status {
+  color: #ffe4a2;
+}
+.completed .course-card-status {
+  color: #bbefc8;
+}
+.nes-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 25px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: #b7cec1;
+  border-top: 1px solid #ffffff22;
+  padding-top: 18px;
+  line-height: 2;
+}
+.nes-footer kbd {
+  margin: 0 4px;
+}
+.nes-map-dialog {
+  max-height: 90dvh;
+}
+.nes-map-dialog .map-heading {
+  position: sticky;
+  top: -32px;
+  background: #112e33;
+  z-index: 1;
+  padding: 10px 0 16px;
+}
+.area-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: #ddeddb;
+  text-shadow: 0 1px 4px #132f35;
+}
+.interaction-prompt {
+  position: absolute;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #214941ee;
+  color: #ffe5a7;
+  border: 1px solid #ffdf8a55;
+  border-radius: 10px;
+  padding: 12px 18px;
+  font-size: 13px;
+  z-index: 3;
+  white-space: nowrap;
+}
+.nes-touch-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+.touch-main,
+.touch-tools {
+  display: flex;
+  gap: 9px;
+  align-items: flex-end;
+  pointer-events: none;
+}
+.touch-tools:empty {
+  display: none;
+}
+.nes-game .home-scroll .level-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 850px) {
+  .campaign-summary {
+    width: 185px;
+    padding: 20px;
+  }
+  .campaign-summary > strong {
+    font-size: 44px;
+  }
+  .nes-intro h1 {
+    font-size: 42px;
+  }
+  .nes-game .home-scroll .level-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .nes-intro .eyebrow {
+    font-size: 9px;
+  }
+  .nes-intro .creator-links {
+    gap: 7px 15px;
+  }
+  .nes-intro .creator-links > div {
+    gap: 4px 15px;
+  }
+  .nes-level-card h4 {
+    font-size: 14px;
+  }
+  .nes-map-dialog .level-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .home-scroll {
+    inset: calc(82px + var(--safe-top)) 0 0;
+    padding: 12px max(18px, var(--safe-left)) max(22px, var(--safe-bottom));
+  }
+  .campaign-summary {
+    display: none;
+  }
+  .nes-game .nes-intro {
+    padding-bottom: 15px;
+    display: block;
+  }
+  .nes-intro h1 {
+    font-size: 39px;
+    margin: 14px 0;
+  }
+  .nes-intro p {
+    font-size: 12px;
+    line-height: 1.65;
+    margin: 13px 0 17px;
+  }
+  .nes-intro .play-button {
+    min-width: 170px;
+    padding: 14px 17px;
+    font-size: 14px;
+  }
+  .nes-intro .creator-links {
+    margin-top: 13px;
+  }
+  .nes-intro .creator-links a {
+    font-size: 10px;
+  }
+  .atlas-heading {
+    margin: 0 0 22px;
+    padding-top: 20px;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .atlas-heading h2 {
+    font-size: 18px;
+  }
+  .atlas-heading > span {
+    font-size: 9px;
+    max-width: 130px;
+    line-height: 1.6;
+  }
+  .world-section {
+    margin-bottom: 24px;
+  }
+  .world-section-heading h3 {
+    font-size: 14px;
+  }
+  .nes-level-card .level-card-body {
+    padding: 11px;
+  }
+  .nes-level-card h4 {
+    font-size: 12px;
+    margin: 7px 0 10px;
+  }
+  .course-card-status {
+    font-size: 8px;
+    gap: 4px;
+  }
+  .nes-level-card .personal-best {
+    font-size: 7px;
+  }
+  .course-id {
+    font-size: 14px;
+    left: 10px;
+    top: 9px;
+  }
+  .course-lock {
+    right: 10px;
+    top: 9px;
+  }
+  .nes-footer > span:first-child {
+    display: none;
+  }
+  .nes-footer:before {
+    content: 'Joystick to move · Drag to look · Hold Jump';
+    font-size: 10px;
+  }
+  .interaction-prompt {
+    bottom: 178px;
+    font-size: 11px;
+    padding: 10px 14px;
+  }
+  .nes-map-dialog .map-heading {
+    top: -20px;
+  }
+  .nes-game .game-notice {
+    max-width: 90%;
+    font-size: 12px;
+  }
+  .nes-touch-actions .touch-action {
+    width: 48px;
+    height: 48px;
+    font-size: 8px;
+  }
+}
+@media (max-height: 500px) and (orientation: landscape) {
+  .home-scroll {
+    inset: calc(65px + var(--safe-top)) 0 0;
+    padding-top: 10px;
+  }
+  .nes-game .nes-intro {
+    display: block;
+    padding-bottom: 15px;
+  }
+  .nes-intro h1 {
+    font-size: 38px;
+    margin: 12px 0;
+  }
+  .nes-intro p {
+    max-width: 400px;
+  }
+  .campaign-summary {
+    display: none;
+  }
+  .nes-game .home-scroll .level-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .nes-level-card .level-card-body {
+    padding: 10px;
+  }
+  .nes-level-card h4 {
+    font-size: 12px;
+  }
+  .course-card-status {
+    font-size: 8px;
+  }
+  .interaction-prompt {
+    bottom: 25px;
+    font-size: 10px;
+  }
+  .nes-game .boss-hud {
+    bottom: 120px;
+  }
+  .touch-tools .touch-action {
+    height: 44px;
+    width: 44px;
+  }
+  .nes-touch-actions {
+    gap: 7px;
+  }
+  .nes-game .nes-intro > div {
+    display: block;
+  }
+  .nes-game .nes-intro .intro-actions {
+    display: flex;
+  }
+  .nes-game .nes-intro .creator-links {
+    display: flex;
+  }
+  .nes-map-dialog .map-heading {
+    top: -20px;
+  }
+}
+.world-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 260px;
+}
+@media (max-width: 850px) {
+  .world-section {
+    contain-intrinsic-size: auto 450px;
+  }
+}
+@media (pointer: coarse) {
+  .nes-intro .creator-links a,
+  .nes-intro .creator-links [data-collection-return] {
+    min-height: 44px !important;
+  }
+}
+/* Touch-capable hybrid browsers can report a fine pointer after a mouse click. */
+.has-touch .touch-controls{display:flex;position:absolute;left:max(18px,calc(var(--safe-left) + 10px));right:max(18px,calc(var(--safe-right) + 10px));bottom:max(18px,calc(var(--safe-bottom) + 12px));align-items:flex-end;justify-content:space-between;pointer-events:none;z-index:4}
+.has-touch .touch-pad{width:clamp(94px,26vmin,124px);height:clamp(94px,26vmin,124px);border-radius:50%;background:#183a3980;border:1px solid #ffffff80;display:grid;place-items:center;pointer-events:auto;touch-action:none;backdrop-filter:blur(6px);user-select:none;-webkit-user-select:none}
+.has-touch .touch-jump{width:72px;height:72px;border-radius:50%;color:white;background:#f3473bdd;border:1px solid #ffffff90;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;font-size:11px;pointer-events:auto;touch-action:none;user-select:none}
+.has-touch .playing-hint{display:none}.has-touch .touch-pad span{font-size:44px;color:white}
+@media(max-width:380px){.has-touch .touch-jump{width:64px;height:64px}}
+@media(max-height:500px) and (orientation:landscape){.has-touch .touch-pad{width:94px;height:94px}.has-touch .touch-controls{bottom:max(12px,calc(var(--safe-bottom) + 8px))}}
+/* Restore the original scenic 3D hero while keeping every course on the front screen. */
+.nes-game.is-home .world-canvas{opacity:1}
+.nes-game.is-home .scene-shade{background:linear-gradient(90deg,#092d32e0, #11363988 50%,#173f3d12 90%),linear-gradient(0deg,#112e32 0%,#112e32bc 25%,transparent 78%)}
+.is-home .world-section{background:#143337e8;border-radius:12px;padding:16px;backdrop-filter:blur(12px)}
+.is-home .atlas-heading{background:#112e328a;padding:18px 14px;border-radius:10px}
+.is-home .campaign-summary{background:#163d39a8;backdrop-filter:blur(12px)}
+.world-canvas canvas[data-mouse-locked="true"]{cursor:none}
+@media(max-width:600px){.is-home .world-section{padding:12px}.is-home .atlas-heading{padding:15px 8px}}
